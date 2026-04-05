@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Profile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f8fafc; }
+        h1, h2 { font-family: 'Playfair Display', serif; }
+        .input-field { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; font-size: 14px; outline: none; transition: border 0.2s; font-family: 'DM Sans', sans-serif; }
+        .input-field:focus { border-color: #1d4ed8; }
+        .btn-primary { width: 100%; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color: white; padding: 13px; border-radius: 10px; font-weight: 500; font-size: 15px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: 'DM Sans', sans-serif; }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <nav class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-blue-700 text-xl">ContentPlatform</h1>
+        <div class="flex items-center gap-4">
+            <a href="/app/feed.html" class="text-sm text-gray-500 hover:text-gray-700">← Back to Feed</a>
+            <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-xl mx-auto mt-10 px-4 pb-20">
+
+        <!-- Profile Info -->
+        <div class="bg-white rounded-2xl p-8 shadow-sm mb-6">
+            <div class="flex items-center gap-4 mb-6">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 text-2xl font-bold" id="avatar">
+                </div>
+                <div>
+                    <h2 id="display-username" class="text-gray-800 text-2xl"></h2>
+                    <p id="display-email" class="text-gray-400 text-sm"></p>
+                </div>
+            </div>
+
+            <div id="profile-error" class="hidden bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm"></div>
+            <div id="profile-success" class="hidden bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg mb-4 text-sm"></div>
+
+            <div class="mb-4">
+                <label class="block text-gray-600 text-sm mb-2 font-medium">Username</label>
+                <input id="username" type="text" class="input-field"/>
+            </div>
+
+            <button onclick="updateProfile()" id="profile-btn" class="btn-primary">
+                Update Profile
+            </button>
+        </div>
+
+        <!-- Change Password -->
+        <div class="bg-white rounded-2xl p-8 shadow-sm">
+            <h2 class="text-gray-800 text-xl mb-6">Change Password</h2>
+
+            <div id="pass-error" class="hidden bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm"></div>
+            <div id="pass-success" class="hidden bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg mb-4 text-sm"></div>
+            <div id="otp-section" class="hidden">
+                <div class="mb-4">
+                    <label class="block text-gray-600 text-sm mb-2 font-medium">OTP Code</label>
+                    <input id="otp-code" type="text" placeholder="6-digit code" maxlength="6"
+                        class="input-field text-center text-xl tracking-widest"/>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-600 text-sm mb-2 font-medium">New Password</label>
+                    <input id="new-password" type="password" placeholder="Min 6 characters" class="input-field"/>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-600 text-sm mb-2 font-medium">Confirm Password</label>
+                    <input id="confirm-password" type="password" placeholder="Repeat new password" class="input-field"/>
+                </div>
+                <button onclick="changePassword()" id="change-btn" class="btn-primary">
+                    Change Password
+                </button>
+            </div>
+
+            <div id="request-otp-section">
+                <p class="text-gray-500 text-sm mb-4 font-light">We will send an OTP to your email to verify the change.</p>
+                <button onclick="requestOTP()" id="otp-btn" class="btn-primary">
+                    Send OTP to Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let userEmail = ""
+
+        async function loadProfile() {
+            const res = await fetch("/auth/me", { credentials: "include" })
+            if (!res.ok) return window.location.href = "/app/login.html"
+            const user = await res.json()
+            document.getElementById("display-username").textContent = user.username
+            document.getElementById("display-email").textContent = user.email
+            document.getElementById("username").value = user.username
+            document.getElementById("avatar").textContent = user.username[0].toUpperCase()
+            userEmail = user.email
+        }
+
+        async function updateProfile() {
+            const username = document.getElementById("username").value.trim()
+            if (!username) return showMsg("profile-error", "Username cannot be empty")
+
+            const btn = document.getElementById("profile-btn")
+            btn.textContent = "Saving..."
+            btn.disabled = true
+
+            try {
+                const res = await fetch("/user/profile", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ username })
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    showMsg("profile-success", "Profile updated!")
+                    document.getElementById("display-username").textContent = username
+                    document.getElementById("avatar").textContent = username[0].toUpperCase()
+                } else {
+                    showMsg("profile-error", data.detail)
+                }
+            } finally {
+                btn.textContent = "Update Profile"
+                btn.disabled = false
+            }
+        }
+
+        async function requestOTP() {
+            const btn = document.getElementById("otp-btn")
+            btn.textContent = "Sending..."
+            btn.disabled = true
+
+            try {
+                const res = await fetch("/auth/request-change-password-otp", {
+                    method: "POST",
+                    credentials: "include"
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    showMsg("pass-success", "OTP sent to your email!")
+                    document.getElementById("request-otp-section").classList.add("hidden")
+                    document.getElementById("otp-section").classList.remove("hidden")
+                } else {
+                    showMsg("pass-error", data.detail)
+                }
+            } finally {
+                btn.textContent = "Send OTP to Email"
+                btn.disabled = false
+            }
+        }
+
+        async function changePassword() {
+            const code = document.getElementById("otp-code").value.trim()
+            const new_password = document.getElementById("new-password").value
+            const confirm_password = document.getElementById("confirm-password").value
+
+            if (!code || code.length !== 6) return showMsg("pass-error", "Enter valid OTP")
+            if (!new_password || !confirm_password) return showMsg("pass-error", "All fields required")
+            if (new_password !== confirm_password) return showMsg("pass-error", "Passwords do not match")
+
+            const btn = document.getElementById("change-btn")
+            btn.textContent = "Changing..."
+            btn.disabled = true
+
+            try {
+                const res = await fetch("/auth/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ code, new_password, confirm_password })
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    showMsg("pass-success", "Password changed successfully!")
+                    document.getElementById("otp-section").classList.add("hidden")
+                    document.getElementById("request-otp-section").classList.remove("hidden")
+                    document.getElementById("otp-code").value = ""
+                    document.getElementById("new-password").value = ""
+                    document.getElementById("confirm-password").value = ""
+                } else {
+                    showMsg("pass-error", data.detail)
+                }
+            } finally {
+                btn.textContent = "Change Password"
+                btn.disabled = false
+            }
+        }
+
+        function showMsg(id, msg) {
+            const ids = ["profile-error", "profile-success", "pass-error", "pass-success"]
+            ids.forEach(i => {
+                const el = document.getElementById(i)
+                if (i === id) {
+                    el.textContent = msg
+                    el.classList.remove("hidden")
+                } else {
+                    el.classList.add("hidden")
+                }
+            })
+        }
+
+        async function logout() {
+            await fetch("/auth/logout", { method: "POST", credentials: "include" })
+            window.location.href = "/app/index.html"
+        }
+
+        loadProfile()
+    </script>
+</body>
+</html>

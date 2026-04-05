@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Saved Posts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f8fafc;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s;
+        }
+
+        .card:hover {
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+
+    <nav class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-blue-700 text-xl">ContentPlatform</h1>
+        <div class="flex items-center gap-4">
+            <a href="/app/feed.html" class="text-sm text-gray-500 hover:text-gray-700">← Back to Feed</a>
+            <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto mt-10 px-4 pb-20">
+        <h2 class="text-gray-800 text-3xl mb-2">Saved Posts</h2>
+        <p class="text-gray-400 text-sm mb-8 font-light">Posts you saved for later</p>
+        <div id="saved-list">
+            <p class="text-gray-400">Loading...</p>
+        </div>
+    </div>
+
+    <script>
+        async function loadSaved() {
+            const res = await fetch("/user/saved", { credentials: "include" })
+
+            // only redirect if not logged in
+            if (res.status === 401) return window.location.href = "/app/login.html"
+
+            if (!res.ok) {
+                document.getElementById("saved-list").innerHTML = `
+            <div class="text-center py-20 text-gray-400">
+                <div class="text-5xl mb-4">⚠️</div>
+                <p>Something went wrong. Try again.</p>
+            </div>`
+                return
+            }
+
+            const posts = await res.json()
+            const container = document.getElementById("saved-list")
+
+            if (posts.length === 0) {
+                container.innerHTML = `
+            <div class="text-center py-20 text-gray-400">
+                <div class="text-5xl mb-4">🔖</div>
+                <p>No saved posts yet.</p>
+                <a href="/app/feed.html" class="text-blue-600 text-sm hover:underline mt-2 block">Browse feed</a>
+            </div>`
+                return
+            }
+
+            container.innerHTML = posts.map(post => `
+        <div class="card p-6 mb-4">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-100">${post.category}</span>
+                <button onclick="unsave(${post.id}, this)"
+                    class="text-xs text-red-400 hover:text-red-600 transition">✕ Unsave</button>
+            </div>
+            <h3 onclick="window.location.href='/app/feed-detail.html?id=${post.id}'"
+                class="text-gray-800 text-lg mb-2 cursor-pointer hover:text-blue-700">${post.title}</h3>
+            <p class="text-gray-500 text-sm leading-relaxed">${post.content.substring(0, 140)}...</p>
+            <p class="text-gray-300 text-xs mt-4">By ${post.author}</p>
+        </div>
+    `).join("")
+        }
+
+        async function unsave(feedId, btn) {
+            const res = await fetch(`/user/saved/${feedId}`, {
+                method: "DELETE",
+                credentials: "include"
+            })
+            if (res.ok) {
+                // remove card from DOM
+                btn.closest(".card").remove()
+                // if no cards left show empty state
+                const remaining = document.querySelectorAll(".card")
+                if (remaining.length === 0) loadSaved()
+            }
+        }
+
+        async function logout() {
+            await fetch("/auth/logout", { method: "POST", credentials: "include" })
+            window.location.href = "/app/index.html"
+        }
+
+        loadSaved()
+    </script>
+</body>
+
+</html>

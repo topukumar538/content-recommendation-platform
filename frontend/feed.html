@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Feed — ContentPlatform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f8fafc; }
+        h1, h2, h3 { font-family: 'Playfair Display', serif; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: all 0.2s; cursor: pointer; }
+        .card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.12); transform: translateY(-2px); }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <nav class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-blue-700 text-xl">ContentPlatform</h1>
+        <div class="flex items-center gap-4">
+            <span id="username" class="text-gray-500 text-sm"></span>
+            <a href="/app/saved.html" class="text-sm text-gray-500 hover:text-gray-700">🔖 Saved</a>
+            <a href="/app/feedback.html" class="text-sm text-gray-500 hover:text-gray-700">💬 Feedback</a>
+            <a href="/app/profile.html" class="text-sm text-gray-500 hover:text-gray-700">👤 Profile</a>
+            <a href="/app/admin.html" id="admin-link" class="hidden text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">Admin</a>
+            <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto mt-10 px-4 pb-20">
+        <h2 class="text-gray-800 text-3xl mb-2">Your Feed</h2>
+        <p class="text-gray-400 text-sm mb-6 font-light">Personalized just for you</p>
+
+        <!-- Search + Filter -->
+        <div class="flex gap-3 mb-6">
+            <input id="search-input" type="text" placeholder="Search posts..."
+                class="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                onkeydown="if(event.key==='Enter') loadFeed()"/>
+            <select id="category-filter"
+                class="border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 bg-white">
+                <option value="">All Categories</option>
+            </select>
+            <button onclick="loadFeed()"
+                class="bg-blue-700 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-800 transition">
+                Search
+            </button>
+            <button onclick="clearSearch()"
+                class="border border-gray-200 text-gray-500 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition">
+                Clear
+            </button>
+        </div>
+
+        <div id="feed-list"><p class="text-gray-400">Loading your feed...</p></div>
+    </div>
+
+    <script>
+        async function loadUser() {
+            const res = await fetch("/auth/me", { credentials: "include" })
+            if (res.status === 401) return window.location.href = "/app/login.html"
+            const user = await res.json()
+            document.getElementById("username").textContent = user.username
+            if (user.role === "admin") document.getElementById("admin-link").classList.remove("hidden")
+        }
+
+        async function loadCategories() {
+            const res = await fetch("/categories", { credentials: "include" })
+            if (!res.ok) return
+            const categories = await res.json()
+            const select = document.getElementById("category-filter")
+            select.innerHTML = `<option value="">All Categories</option>` +
+                categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("")
+        }
+
+        async function loadFeed() {
+            const search = document.getElementById("search-input").value.trim()
+            const category_id = document.getElementById("category-filter").value
+
+            let url = "/feed"
+            const params = []
+            if (search) params.push(`search=${encodeURIComponent(search)}`)
+            if (category_id) params.push(`category_id=${category_id}`)
+            if (params.length > 0) url += "?" + params.join("&")
+
+            const res = await fetch(url, { credentials: "include" })
+            if (res.status === 401) return window.location.href = "/app/login.html"
+            const feeds = await res.json()
+            const container = document.getElementById("feed-list")
+
+            if (feeds.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-20 text-gray-400">
+                        <div class="text-5xl mb-4">📭</div>
+                        <p>No posts found.</p>
+                    </div>`
+                return
+            }
+
+            container.innerHTML = feeds.map((feed, i) => `
+                <div onclick="window.location.href='/app/feed-detail.html?id=${feed.id}'"
+                    class="card p-6 mb-4">
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-100">${feed.category}</span>
+                    </div>
+                    <h3 class="text-gray-800 text-lg mb-2">${feed.title}</h3>
+                    <p class="text-gray-500 text-sm leading-relaxed">${feed.content.substring(0, 140)}...</p>
+                    <p class="text-gray-300 text-xs mt-4">By ${feed.author}</p>
+                </div>
+            `).join("")
+        }
+
+        function clearSearch() {
+            document.getElementById("search-input").value = ""
+            document.getElementById("category-filter").value = ""
+            loadFeed()
+        }
+
+        async function logout() {
+            await fetch("/auth/logout", { method: "POST", credentials: "include" })
+            window.location.href = "/app/index.html"
+        }
+
+        loadUser()
+        loadCategories()
+        loadFeed()
+    </script>
+</body>
+</html>

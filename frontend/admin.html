@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — ContentPlatform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #f8fafc;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .input-field {
+            width: 100%;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .input-field:focus {
+            border-color: #1d4ed8;
+        }
+
+        .btn-blue {
+            background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        .btn-blue:hover {
+            opacity: 0.9;
+        }
+
+        .btn-green {
+            background: #16a34a;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 500;
+            transition: opacity 0.2s;
+            width: 100%;
+        }
+
+        .btn-green:hover {
+            opacity: 0.9;
+        }
+
+        .btn-red {
+            background: none;
+            border: none;
+            color: #ef4444;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .btn-red:hover {
+            color: #b91c1c;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+
+    <nav class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-blue-700 text-xl">ContentPlatform</h1>
+        <div class="flex items-center gap-4">
+            <a href="/app/feed.html" class="text-sm text-gray-500 hover:text-gray-700">View Feed</a>
+            <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto mt-10 px-4 pb-20">
+        <h2 class="text-gray-800 text-3xl mb-2">Admin Panel</h2>
+        <p class="text-gray-400 text-sm mb-8 font-light">Manage your platform</p>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl p-5 shadow-sm text-center">
+                <p class="text-3xl font-bold text-blue-700" id="stat-users">—</p>
+                <p class="text-gray-400 text-sm mt-1">Total Users</p>
+            </div>
+            <div class="bg-white rounded-xl p-5 shadow-sm text-center">
+                <p class="text-3xl font-bold text-blue-700" id="stat-posts">—</p>
+                <p class="text-gray-400 text-sm mt-1">Total Posts</p>
+            </div>
+            <div class="bg-white rounded-xl p-5 shadow-sm text-center">
+                <p class="text-3xl font-bold text-blue-700" id="stat-interactions">—</p>
+                <p class="text-gray-400 text-sm mt-1">Interactions</p>
+            </div>
+            <div class="bg-white rounded-xl p-5 shadow-sm text-center">
+                <p class="text-3xl font-bold text-blue-700" id="stat-feedback">—</p>
+                <p class="text-gray-400 text-sm mt-1">Feedback</p>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="grid grid-cols-2 gap-4 mb-8">
+            <a href="/app/admin-users.html"
+                class="bg-white rounded-xl p-5 shadow-sm flex items-center gap-4 hover:shadow-md transition">
+                <span class="text-3xl">👥</span>
+                <div>
+                    <p class="text-gray-700 font-medium">User Management</p>
+                    <p class="text-gray-400 text-xs">View, block, delete users</p>
+                </div>
+            </a>
+            <a href="/app/admin-feedback.html"
+                class="bg-white rounded-xl p-5 shadow-sm flex items-center gap-4 hover:shadow-md transition">
+                <span class="text-3xl">💬</span>
+                <div>
+                    <p class="text-gray-700 font-medium">Feedback</p>
+                    <p class="text-gray-400 text-xs">View and resolve feedback</p>
+                </div>
+            </a>
+        </div>
+
+        <!-- Categories -->
+        <div class="card">
+            <h3 class="text-gray-700 text-xl mb-5">Categories</h3>
+            <div class="flex gap-3 mb-4">
+                <input id="category-name" type="text" placeholder="New category name" class="input-field" />
+                <button onclick="createCategory()" class="btn-blue whitespace-nowrap">Create</button>
+            </div>
+            <div id="category-msg" class="hidden text-sm mb-3"></div>
+            <ul id="category-list" class="divide-y divide-gray-50"></ul>
+        </div>
+
+        <!-- Create Post -->
+        <div class="card">
+            <h3 class="text-gray-700 text-xl mb-5">Create Post</h3>
+            <div id="post-msg" class="hidden text-sm mb-3"></div>
+            <input id="post-title" type="text" placeholder="Post title" class="input-field mb-3" />
+            <select id="post-category" class="input-field mb-3">
+                <option value="">Select category</option>
+            </select>
+            <textarea id="post-content" rows="5" placeholder="Write your post content..."
+                class="input-field mb-4"></textarea>
+            <button onclick="createPost()" class="btn-green">Publish Post</button>
+        </div>
+
+        <!-- Posts -->
+        <div class="card">
+            <h3 class="text-gray-700 text-xl mb-5">All Posts</h3>
+            <ul id="post-list" class="divide-y divide-gray-50"></ul>
+        </div>
+    </div>
+
+    <script>
+        // ===== all functions defined first =====
+
+        async function checkAdmin() {
+            const res = await fetch("/auth/me", { credentials: "include" })
+            if (!res.ok) return window.location.href = "/app/login.html"
+            const user = await res.json()
+            if (user.role !== "admin") window.location.href = "/app/feed.html"
+        }
+
+        async function loadStats() {
+            const res = await fetch("/admin/stats", { credentials: "include" })
+            if (!res.ok) return
+            const stats = await res.json()
+            document.getElementById("stat-users").textContent = stats.total_users
+            document.getElementById("stat-posts").textContent = stats.total_posts
+            document.getElementById("stat-interactions").textContent = stats.total_interactions
+            document.getElementById("stat-feedback").textContent = stats.total_feedback
+        }
+
+        async function loadCategories() {
+            const res = await fetch("/categories", { credentials: "include" })
+            const categories = await res.json()
+            document.getElementById("category-list").innerHTML = categories.length === 0
+                ? `<p class="text-gray-400 text-sm py-2">No categories yet.</p>`
+                : categories.map(c => `
+                    <li class="flex justify-between items-center py-3">
+                        <span class="text-gray-700 text-sm">${c.name}</span>
+                        <button onclick="deleteCategory(${c.id})" class="btn-red">Delete</button>
+                    </li>
+                `).join("")
+            const select = document.getElementById("post-category")
+            select.innerHTML = `<option value="">Select category</option>` +
+                categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("")
+        }
+
+        async function loadPosts() {
+            const res = await fetch("/feed", { credentials: "include" })
+            const posts = await res.json()
+            document.getElementById("post-list").innerHTML = posts.length === 0
+                ? `<p class="text-gray-400 text-sm">No posts yet.</p>`
+                : posts.map(p => `
+                    <li class="flex justify-between items-center py-3">
+                        <div>
+                            <p class="text-gray-700 text-sm font-medium">${p.title}</p>
+                            <p class="text-gray-400 text-xs mt-0.5">${p.category}</p>
+                        </div>
+                        <button onclick="deletePost(${p.id})" class="btn-red">Delete</button>
+                    </li>
+                `).join("")
+        }
+
+        async function createCategory() {
+            const name = document.getElementById("category-name").value.trim()
+            if (!name) return
+            const res = await fetch("/categories", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ name })
+            })
+            const data = await res.json()
+            const msg = document.getElementById("category-msg")
+            msg.classList.remove("hidden")
+            if (res.ok) {
+                msg.className = "text-sm mb-3 text-green-600"
+                msg.textContent = "Category created!"
+                document.getElementById("category-name").value = ""
+                loadCategories()
+            } else {
+                msg.className = "text-sm mb-3 text-red-500"
+                msg.textContent = data.detail
+            }
+        }
+
+        async function deleteCategory(id) {
+            const res = await fetch(`/categories/${id}`, { method: "DELETE", credentials: "include" })
+            if (res.ok) loadCategories()
+            else { const data = await res.json(); alert(data.detail) }
+        }
+
+        async function createPost() {
+            const title = document.getElementById("post-title").value.trim()
+            const content = document.getElementById("post-content").value.trim()
+            const category_id = parseInt(document.getElementById("post-category").value)
+            if (!title || !content || !category_id) return
+            const res = await fetch("/feed", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ title, content, category_id })
+            })
+            const data = await res.json()
+            const msg = document.getElementById("post-msg")
+            msg.classList.remove("hidden")
+            if (res.ok) {
+                msg.className = "text-sm mb-3 text-green-600"
+                msg.textContent = "Post published!"
+                document.getElementById("post-title").value = ""
+                document.getElementById("post-content").value = ""
+                loadPosts()
+            } else {
+                msg.className = "text-sm mb-3 text-red-500"
+                msg.textContent = data.detail
+            }
+        }
+
+        async function deletePost(id) {
+            const res = await fetch(`/feed/${id}`, { method: "DELETE", credentials: "include" })
+            if (res.ok) loadPosts()
+        }
+
+        async function logout() {
+            await fetch("/auth/logout", { method: "POST", credentials: "include" })
+            window.location.href = "/app/index.html"
+        }
+
+        // ===== called once at the bottom =====
+        checkAdmin()
+        loadStats()
+        loadCategories()
+        loadPosts()
+    </script>
+</body>
+
+</html>

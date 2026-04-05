@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verify — ContentPlatform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; }
+        h2 { font-family: 'Playfair Display', serif; }
+        .hero-bg { background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 40%, #3b82f6 100%); }
+        .glass { background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); box-shadow: 0 25px 60px rgba(0,0,0,0.25); }
+        .otp-input { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px; font-size: 28px; text-align: center; letter-spacing: 12px; outline: none; transition: border 0.2s; font-family: 'DM Sans', sans-serif; }
+        .otp-input:focus { border-color: #1d4ed8; }
+        .btn-primary { width: 100%; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color: white; padding: 13px; border-radius: 10px; font-weight: 500; font-size: 15px; border: none; cursor: pointer; transition: opacity 0.2s; font-family: 'DM Sans', sans-serif; }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-secondary { width: 100%; background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; padding: 12px; border-radius: 10px; font-size: 14px; cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
+        .btn-secondary:hover:not(:disabled) { border-color: #1d4ed8; color: #1d4ed8; }
+        .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="min-h-screen hero-bg flex items-center justify-center px-4">
+    <div class="glass rounded-2xl p-10 w-full max-w-md">
+        <div class="text-center mb-8">
+            <div class="text-5xl mb-4">✉️</div>
+            <h2 class="text-gray-800 text-3xl mb-2">Check your email</h2>
+            <p class="text-gray-500 text-sm font-light">We sent a 6-digit code to</p>
+            <p id="email-display" class="text-blue-600 font-medium text-sm mt-1"></p>
+        </div>
+
+        <div id="error" class="hidden bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-5 text-sm"></div>
+        <div id="success" class="hidden bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg mb-5 text-sm"></div>
+
+        <div class="mb-6">
+            <input id="code" type="text" placeholder="000000" maxlength="6" class="otp-input"
+                onkeydown="if(event.key==='Enter') verify()"/>
+        </div>
+
+        <button onclick="verify()" id="verify-btn" class="btn-primary mb-3">Verify Code</button>
+        <button onclick="resend()" id="resend-btn" class="btn-secondary" disabled>
+            Resend code in <span id="timer">60</span>s
+        </button>
+
+        <p class="text-center text-sm text-gray-500 mt-6">
+            <a href="/app/signup.html" class="text-blue-600 hover:underline">← Back to signup</a>
+        </p>
+    </div>
+
+    <script>
+        const email = localStorage.getItem("verify_email")
+        const purpose = localStorage.getItem("verify_purpose") || "signup"
+        if (!email) window.location.href = "/app/signup.html"
+        document.getElementById("email-display").textContent = email
+
+        let seconds = 60
+        let timerInterval = null
+        const resendBtn = document.getElementById("resend-btn")
+
+        function startTimer() {
+            seconds = 60
+            resendBtn.disabled = true
+            clearInterval(timerInterval)
+            timerInterval = setInterval(() => {
+                seconds--
+                document.getElementById("timer").textContent = seconds
+                if (seconds <= 0) {
+                    clearInterval(timerInterval)
+                    resendBtn.disabled = false
+                    resendBtn.textContent = "Resend code"
+                }
+            }, 1000)
+        }
+        startTimer()
+
+        function showError(msg) {
+            const el = document.getElementById("error")
+            el.textContent = msg
+            el.classList.remove("hidden")
+            document.getElementById("success").classList.add("hidden")
+        }
+        function showSuccess(msg) {
+            const el = document.getElementById("success")
+            el.textContent = msg
+            el.classList.remove("hidden")
+            document.getElementById("error").classList.add("hidden")
+        }
+
+        async function verify() {
+            const code = document.getElementById("code").value.trim()
+            if (!code || code.length !== 6) return showError("Enter a valid 6-digit code")
+            const btn = document.getElementById("verify-btn")
+            btn.textContent = "Verifying..."
+            btn.disabled = true
+            try {
+                const res = await fetch("/auth/verify-otp", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ email, code, purpose })
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    showSuccess(data.message)
+                    localStorage.removeItem("verify_email")
+                    localStorage.removeItem("verify_purpose")
+                    setTimeout(() => window.location.href = "/app/login.html", 1500)
+                } else {
+                    showError(data.detail)
+                }
+            } finally {
+                btn.textContent = "Verify Code"
+                btn.disabled = false
+            }
+        }
+
+        async function resend() {
+            try {
+                const res = await fetch("/auth/resend-otp", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ email, code: "", purpose })
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    showSuccess("OTP resent successfully!")
+                    startTimer()
+                } else {
+                    showError(data.detail)
+                }
+            } catch {
+                showError("Failed to resend OTP")
+            }
+        }
+    </script>
+</body>
+</html>

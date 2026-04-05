@@ -1,0 +1,172 @@
+import requests
+
+BASE_URL = "http://localhost:8000"
+
+# ===== STEP 1 — Login as admin =====
+login_res = requests.post(f"{BASE_URL}/auth/login", json={
+    "email": "topukumar538@gmail.com",  # ← change this
+    "password": "123456"        # ← change this
+})
+
+if not login_res.ok:
+    print("Login failed:", login_res.json())
+    exit()
+
+cookies = login_res.cookies
+print("✅ Logged in as admin")
+
+# ===== STEP 2 — Create 5 categories =====
+categories = ["Technology", "Science", "Business", "Health", "Sports"]
+category_ids = {}
+
+for name in categories:
+    res = requests.post(f"{BASE_URL}/categories",
+        json={"name": name},
+        cookies=cookies
+    )
+    if res.ok:
+        category_ids[name] = res.json()["id"]
+        print(f"✅ Category created: {name}")
+    else:
+        # already exists — fetch it
+        res2 = requests.get(f"{BASE_URL}/categories", cookies=cookies)
+        for c in res2.json():
+            if c["name"] == name:
+                category_ids[name] = c["id"]
+                print(f"⚠️  Category already exists: {name}")
+
+print(f"\nCategory IDs: {category_ids}\n")
+
+# ===== STEP 3 — Create 100 posts (20 per category) =====
+posts = {
+    "Technology": [
+        ("How Python became the most popular language", "Python's rise to dominance in programming is a story of simplicity meeting power. From web development to machine learning, Python's clean syntax and vast ecosystem of libraries made it the go-to choice for developers worldwide. Its community-driven development ensures constant improvement."),
+        ("What is cloud computing and why it matters", "Cloud computing has transformed how businesses operate by providing on-demand access to computing resources. Instead of maintaining physical servers, companies can scale instantly, reduce costs, and focus on their core products. AWS, Azure, and Google Cloud lead this revolution."),
+        ("Understanding REST APIs", "REST APIs are the backbone of modern web applications. They define how systems communicate over HTTP using standard methods like GET, POST, PUT, and DELETE. A well-designed REST API is intuitive, consistent, and follows resource-based URL patterns."),
+        ("What is Docker and why developers love it", "Docker solves the classic problem of works on my machine by packaging applications with all their dependencies into containers. These containers run identically across any environment, making deployment reliable and development consistent across teams."),
+        ("Introduction to Machine Learning", "Machine learning enables computers to learn from data without being explicitly programmed. From recommendation systems to image recognition, ML models find patterns in data and make predictions. Understanding the basics opens doors to one of tech's most exciting fields."),
+        ("How databases work under the hood", "Databases store and retrieve data efficiently using sophisticated data structures like B-trees and hash indexes. Understanding how queries are executed, how indexes speed up searches, and how transactions maintain data integrity is essential for any backend developer."),
+        ("Git version control explained simply", "Git tracks changes in your code over time, allowing you to collaborate with others, revert mistakes, and maintain multiple versions of your project simultaneously. Understanding branching, merging, and rebasing makes you a much more effective developer."),
+        ("The rise of TypeScript", "TypeScript adds static typing to JavaScript, catching errors at compile time rather than runtime. As codebases grow larger, type safety becomes increasingly valuable. Major frameworks and companies have adopted TypeScript as their standard, making it essential to learn."),
+        ("What is Kubernetes and container orchestration", "Kubernetes automates the deployment, scaling, and management of containerized applications. When you have hundreds of containers running across multiple servers, Kubernetes handles load balancing, self-healing, and rolling updates automatically."),
+        ("Understanding JWT authentication", "JSON Web Tokens provide a stateless way to authenticate users across distributed systems. A JWT contains encoded claims about the user and is signed to prevent tampering. The server can verify authenticity without database lookups, making it highly scalable."),
+        ("How the internet works", "Every time you visit a website, your browser performs DNS lookups, establishes TCP connections, sends HTTP requests, and renders HTML. Understanding this full stack of protocols helps you build better applications and debug issues more effectively."),
+        ("Introduction to SQL databases", "SQL databases store data in structured tables with defined schemas. Mastering SELECT, JOIN, GROUP BY, and indexes transforms you from someone who writes queries to someone who understands why some queries are fast and others are painfully slow."),
+        ("What is microservices architecture", "Microservices break large applications into small independent services that communicate via APIs. Each service can be developed, deployed, and scaled independently. While this adds operational complexity, it enables teams to work autonomously and deploy with confidence."),
+        ("How search engines index the web", "Search engines use web crawlers to discover pages, parse their content, and build inverted indexes mapping words to documents. When you search, ranking algorithms evaluate hundreds of signals to return the most relevant results in milliseconds."),
+        ("Introduction to cybersecurity", "Cybersecurity protects systems, networks, and data from digital attacks. Understanding common vulnerabilities like SQL injection, XSS, and CSRF helps developers write more secure code. Security is not a feature to add later — it must be built in from the start."),
+        ("How to design a good REST API", "A well-designed API uses meaningful URLs, appropriate HTTP methods, consistent error responses, and proper status codes. Good API design makes integration easy for developers and reduces support burden. Documentation and versioning are equally important."),
+        ("What is WebSocket and real-time communication", "WebSockets provide full-duplex communication between browser and server over a single persistent connection. Unlike HTTP which is request-response, WebSockets enable the server to push data to clients instantly, powering chat apps and live dashboards."),
+        ("Understanding asymptotic complexity", "Big O notation describes how algorithms scale with input size. An O(n²) algorithm that works on 100 items becomes unusable on 1 million. Understanding time and space complexity helps you choose the right algorithm and write code that scales."),
+        ("What is Redis and when to use it", "Redis is an in-memory data store used as cache, message broker, and session store. Its speed comes from storing data in RAM rather than disk. Common use cases include caching database queries, storing user sessions, and pub/sub messaging between services."),
+        ("How SSL/TLS encryption works", "HTTPS encrypts data between browser and server using TLS. During the handshake, certificates are verified, encryption algorithms are negotiated, and session keys are exchanged. This protects data from eavesdropping and man-in-the-middle attacks."),
+    ],
+    "Science": [
+        ("How black holes are formed", "Black holes form when massive stars exhaust their nuclear fuel and collapse under their own gravity. If the star is massive enough, nothing can stop the collapse and a singularity forms, surrounded by an event horizon from which nothing, not even light, can escape."),
+        ("The science behind vaccines", "Vaccines train the immune system to recognize pathogens without causing disease. They introduce harmless pieces of the pathogen — proteins or weakened viruses — triggering antibody production. When the real pathogen appears, the immune system responds rapidly."),
+        ("What is quantum computing", "Quantum computers use quantum bits that can exist in multiple states simultaneously, unlike classical bits that are either 0 or 1. This enables certain calculations to be performed exponentially faster, potentially revolutionizing cryptography and drug discovery."),
+        ("How CRISPR gene editing works", "CRISPR-Cas9 acts like molecular scissors, allowing scientists to cut DNA at precise locations and edit genes. This breakthrough technology has enormous potential for treating genetic diseases, though ethical questions about germline editing remain hotly debated."),
+        ("The Big Bang theory explained", "The universe began approximately 13.8 billion years ago from an extremely hot, dense state and has been expanding ever since. Evidence includes cosmic microwave background radiation, the abundance of light elements, and the observed redshift of distant galaxies."),
+        ("How the human brain works", "The brain contains approximately 86 billion neurons connected by trillions of synapses. Electrical signals and chemical neurotransmitters enable thought, memory, and emotion. Neuroscience is uncovering how different brain regions specialize and how they work together."),
+        ("What is dark matter", "Dark matter makes up about 27% of the universe but has never been directly detected. Its existence is inferred from gravitational effects on visible matter. Galaxies rotate at speeds that require far more mass than we can see, pointing to invisible matter."),
+        ("How evolution works", "Natural selection drives evolution by favoring traits that improve survival and reproduction. Over generations, advantageous mutations spread through populations. The fossil record, comparative anatomy, and DNA analysis all provide overwhelming evidence for evolution."),
+        ("The science of climate change", "Human activities releasing greenhouse gases are warming the planet by trapping heat in the atmosphere. The consequences include rising sea levels, more extreme weather, and ecosystem disruption. The scientific consensus is clear and the window for action is narrowing."),
+        ("How nuclear fusion works", "Nuclear fusion powers stars by combining light atomic nuclei into heavier ones, releasing enormous energy. Replicating this process on Earth could provide virtually unlimited clean energy. The challenge is achieving the extreme temperatures and pressures required."),
+        ("What is DNA and how does it work", "DNA is a double helix molecule encoding genetic instructions for life. Four bases — adenine, thymine, guanine, cytosine — pair in specific combinations to form genes. When cells divide, DNA replicates with remarkable accuracy to pass genetic information to new cells."),
+        ("How the immune system fights disease", "The immune system distinguishes self from non-self, attacking pathogens while sparing healthy tissue. Innate immunity provides immediate non-specific defense. Adaptive immunity learns to recognize specific threats, creating memory cells for faster future responses."),
+        ("The mystery of consciousness", "Despite decades of research, scientists cannot explain why physical processes in the brain give rise to subjective experience. The hard problem of consciousness — why there is something it is like to be you — remains one of science's deepest unsolved questions."),
+        ("How telescopes reveal the universe", "Modern telescopes collect light across the entire electromagnetic spectrum — from radio waves to gamma rays. Space telescopes like Hubble and James Webb avoid atmospheric distortion, revealing distant galaxies, exoplanets, and the early universe with unprecedented clarity."),
+        ("What is the theory of relativity", "Einstein's special relativity showed that space and time are relative, depending on the observer's motion. General relativity describes gravity as curvature of spacetime caused by mass. These theories have been confirmed by GPS satellites, gravitational waves, and black hole images."),
+        ("How antibiotics work and resistance", "Antibiotics kill bacteria by targeting structures they have that human cells lack — like cell walls and certain ribosomes. Antibiotic resistance evolves when bacteria survive treatment and pass on resistance genes. Overuse accelerates this process, threatening modern medicine."),
+        ("The science of sleep", "During sleep the brain consolidates memories, clears metabolic waste, and repairs tissues. Sleep deprivation impairs cognition, immunity, and mental health. REM sleep, characterized by vivid dreams, plays a crucial role in emotional processing and creativity."),
+        ("How photosynthesis powers life", "Photosynthesis converts sunlight, water, and carbon dioxide into glucose and oxygen. This process in plants and algae forms the foundation of most food chains on Earth. Understanding photosynthesis inspires research into artificial solar energy capture."),
+        ("What causes earthquakes", "Earthquakes occur when stress accumulated along fault lines is suddenly released. Tectonic plates move continuously, and where they meet, friction holds them until the force overcomes resistance. The released energy travels as seismic waves felt at the surface."),
+        ("The human microbiome", "Trillions of microorganisms live in and on the human body, outnumbering our own cells. The gut microbiome influences digestion, immunity, and even mental health. Diet dramatically shapes microbial communities, and disruption is linked to numerous diseases."),
+    ],
+    "Business": [
+        ("How to build a startup from scratch", "Successful startups begin with a genuine problem worth solving. Validate your idea before building by talking to potential customers. Start with a minimum viable product, iterate based on feedback, and find product-market fit before scaling. Most startups fail from building something nobody wants."),
+        ("What is stock market and how it works", "Stock markets are platforms where shares of publicly traded companies are bought and sold. Prices reflect collective expectations about future earnings. Long-term investing in diversified index funds consistently outperforms most active trading strategies over decades."),
+        ("Understanding venture capital", "Venture capitalists invest in early-stage startups in exchange for equity, expecting most investments to fail but a few to generate enormous returns. A good pitch demonstrates a large market, differentiated product, strong team, and clear path to profitability."),
+        ("How to write a business plan", "A business plan articulates your vision, market opportunity, competitive advantage, business model, and financial projections. It forces clear thinking about assumptions and risks. While plans rarely survive contact with reality, the planning process is invaluable."),
+        ("What is product market fit", "Product-market fit occurs when your product satisfies strong market demand. Signs include rapid organic growth, high retention, and customers who are deeply upset by the idea of losing your product. Achieving fit is the most important milestone for any startup."),
+        ("How companies set prices", "Pricing strategy balances what customers are willing to pay against costs and competitive dynamics. Cost-plus pricing adds margin to costs. Value-based pricing charges what the outcome is worth. Penetration pricing sacrifices margin for market share. Each has tradeoffs."),
+        ("Understanding financial statements", "The income statement shows revenue and expenses over time. The balance sheet shows assets, liabilities, and equity at a point in time. The cash flow statement tracks actual money movement. Together they provide a complete picture of financial health."),
+        ("What is lean startup methodology", "Lean startup replaces lengthy planning with rapid experimentation. Build a minimum viable product, measure how customers respond, and learn what to adjust. This build-measure-learn cycle reduces waste by validating assumptions before making large investments."),
+        ("How to negotiate a salary", "Research market rates for your role, skills, and location. Know your value and be willing to walk away. Let the employer make the first offer when possible. Negotiate the entire package — base salary, equity, benefits, flexibility — not just the number."),
+        ("What is network effects", "Network effects occur when a product becomes more valuable as more people use it. Telephone networks, social media, and marketplaces all benefit from this dynamic. Companies that achieve strong network effects become nearly impossible for competitors to displace."),
+        ("How brand value is built", "Brand value represents the premium customers pay for a name they trust. It is built through consistent quality, distinctive identity, and emotional connection over years. Strong brands reduce customer acquisition costs and provide resilience during difficult times."),
+        ("What is supply chain management", "Supply chain management coordinates the flow of goods from raw materials to end customers. Disruptions — like the COVID pandemic showed — can halt production globally. Resilient supply chains balance efficiency with redundancy and geographic diversification."),
+        ("How to manage a remote team", "Remote teams require more deliberate communication than co-located ones. Clear documentation, regular check-ins, asynchronous workflows, and trust in outcomes over hours worked are essential. The best remote managers over-communicate context and under-prescribe methods."),
+        ("Understanding inflation and its effects", "Inflation erodes purchasing power as prices rise over time. Central banks target moderate inflation as a sign of healthy economic activity. High inflation hurts savers and fixed-income earners. Businesses must continuously improve efficiency to maintain margins."),
+        ("What is a business model", "A business model describes how a company creates, delivers, and captures value. Subscription models provide recurring revenue. Marketplace models connect buyers and sellers taking a cut. Freemium models convert free users to paid. Choosing the right model is strategic."),
+        ("How marketing has changed with the internet", "Digital marketing enables precise targeting, measurable results, and global reach at low cost. Content marketing, SEO, social media, and email replaced broadcast advertising for many businesses. Customer acquisition costs and lifetime value became the key metrics."),
+        ("What is equity and how it works", "Equity represents ownership in a company. Founders receive equity for starting the company. Investors receive equity in exchange for capital. Employees receive equity through stock options as compensation. Dilution occurs as new shares are issued in funding rounds."),
+        ("How customer retention drives growth", "Acquiring new customers costs five times more than retaining existing ones. Net Revenue Retention — whether existing customers spend more or less over time — is the most important metric for subscription businesses. Product quality and customer success drive retention."),
+        ("What is competitive advantage", "Competitive advantage is what makes a company better than alternatives in ways customers value. Cost leadership, differentiation, and focus are the classic strategies. Durable advantages are hard to copy — network effects, switching costs, and proprietary data create moats."),
+        ("How to read a term sheet", "A term sheet outlines the key terms of an investment. Valuation determines how much of the company investors receive. Liquidation preferences determine payout order. Anti-dilution provisions protect investors in down rounds. Pro-rata rights allow investors to maintain ownership percentage."),
+    ],
+    "Health": [
+        ("Why sleep is essential for health", "Sleep is when the body repairs itself, consolidates memories, and regulates hormones. Chronic sleep deprivation increases risk of obesity, diabetes, cardiovascular disease, and depression. Seven to nine hours per night is optimal for most adults."),
+        ("How exercise changes your brain", "Regular exercise increases blood flow to the brain, promotes neurogenesis, and releases endorphins. Research shows exercise is as effective as antidepressants for mild to moderate depression. Even 30 minutes of brisk walking significantly improves cognitive function."),
+        ("Understanding mental health", "Mental health encompasses emotional, psychological, and social wellbeing. Conditions like depression and anxiety are real illnesses, not character flaws. Evidence-based treatments include therapy, medication, lifestyle changes, and social connection. Stigma prevents many from seeking help."),
+        ("How nutrition affects longevity", "Diet is one of the most powerful determinants of health and lifespan. Diets rich in vegetables, fruits, legumes, and whole grains while low in processed foods and sugar reduce risk of chronic disease. The Mediterranean diet consistently shows the strongest evidence."),
+        ("What is intermittent fasting", "Intermittent fasting cycles between eating and fasting periods. Common approaches include 16:8 and 5:2. Research suggests benefits including weight loss, improved insulin sensitivity, and cellular repair processes called autophagy. Individual results vary significantly."),
+        ("The science of stress", "Chronic stress activates the fight-or-flight response indefinitely, elevating cortisol and adrenaline. Over time this damages the cardiovascular system, suppresses immunity, and impairs cognition. Mindfulness, exercise, social connection, and adequate sleep are evidence-based antidotes."),
+        ("How the gut affects mental health", "The gut-brain axis connects intestinal function to mood and cognition via the vagus nerve and neurotransmitter production. The gut produces 90% of the body's serotonin. Emerging research links gut microbiome diversity to reduced risk of depression and anxiety."),
+        ("Understanding heart disease prevention", "Heart disease is largely preventable through lifestyle choices. Not smoking, regular exercise, a healthy diet, maintaining healthy weight, and managing blood pressure and cholesterol dramatically reduce risk. These habits compound over decades to determine cardiovascular health."),
+        ("What is mindfulness and does it work", "Mindfulness involves paying deliberate attention to present experience without judgment. Research supports its effectiveness for reducing stress, anxiety, and depression. Regular practice changes brain structure in regions associated with attention and emotional regulation."),
+        ("How vaccines protect communities", "Herd immunity occurs when enough people are immune that disease cannot spread efficiently. Vaccination protects not only individuals but also those who cannot be vaccinated — newborns, immunocompromised people. Community protection requires sustained high vaccination rates."),
+        ("The benefits of social connection", "Strong social relationships are among the most powerful predictors of longevity and wellbeing. Loneliness is as harmful to health as smoking 15 cigarettes per day. Quality matters more than quantity — a few deep relationships outperform many shallow ones."),
+        ("Understanding diabetes prevention", "Type 2 diabetes develops when cells become resistant to insulin, often driven by excess weight and inactivity. It is largely preventable and even reversible in early stages through diet, exercise, and weight loss. Regular screening enables early intervention."),
+        ("How to build sustainable habits", "Habits form through cue, routine, reward cycles. Making desired behaviors easy and undesired behaviors harder leverages environmental design. Habit stacking links new habits to existing ones. Consistency matters more than intensity — small daily actions compound dramatically."),
+        ("What is inflammation and why it matters", "Acute inflammation is the body's healing response to injury. Chronic low-grade inflammation, driven by poor diet, stress, and inactivity, underlies heart disease, diabetes, and cancer. Anti-inflammatory diets rich in omega-3s, vegetables, and whole foods help manage it."),
+        ("The importance of preventive care", "Preventive care catches problems early when they are most treatable. Regular screenings, vaccinations, and dental visits prevent small issues from becoming serious ones. The return on investment for preventive care dramatically exceeds the cost of treating advanced disease."),
+        ("How hydration affects performance", "Water is essential for every physiological process. Even mild dehydration impairs cognitive performance, mood, and physical endurance. Thirst is a late signal — regular hydration throughout the day maintains optimal function. Individual needs vary with activity and climate."),
+        ("Understanding anxiety disorders", "Anxiety disorders are the most common mental health conditions, affecting hundreds of millions worldwide. They involve excessive, persistent worry disproportionate to actual threats. Cognitive behavioral therapy and medication are highly effective, yet most people with anxiety never receive treatment."),
+        ("The science of weight loss", "Weight loss occurs when energy expenditure exceeds energy intake. But hormones, gut bacteria, sleep, and stress all influence this equation. Sustainable weight loss requires behavioral changes that can be maintained indefinitely, not temporary restriction."),
+        ("How to improve your immune system", "The immune system functions best when supported by adequate sleep, regular exercise, balanced nutrition, stress management, and social connection. No supplement significantly boosts immunity beyond what these fundamentals provide. Avoiding smoking and excess alcohol also matters greatly."),
+        ("What is cognitive behavioral therapy", "CBT is a evidence-based psychological treatment that helps people identify and change negative thought patterns and behaviors. It is effective for depression, anxiety, PTSD, and many other conditions. CBT teaches practical skills that patients can apply independently after treatment ends."),
+    ],
+    "Sports": [
+        ("How athletes train their minds", "Elite athletes spend as much time training mentally as physically. Visualization, focus techniques, and managing pressure separate champions from equally talented competitors. Sports psychology has become central to performance at the highest levels of competition."),
+        ("The science of athletic performance", "Athletic performance depends on genetics, training adaptation, nutrition, and recovery. VO2 max, lactate threshold, and neuromuscular efficiency are key physiological determinants. Modern sports science optimizes each variable to extract maximum performance from human potential."),
+        ("How football tactics have evolved", "Football tactics have evolved from simple formations to sophisticated positional play. High pressing, gegenpressing, and tiki-taka redefined what was possible. Data analytics now shapes tactical decisions, player recruitment, and in-game adjustments at elite clubs."),
+        ("What is the optimal training frequency", "Training frequency should match recovery capacity. More frequent training with lower volume per session often outperforms less frequent high-volume sessions. Individual recovery varies with age, training history, sleep, and nutrition. Progressive overload drives adaptation."),
+        ("How sports nutrition has changed", "Modern sports nutrition is evidence-based, precise, and individualized. Carbohydrate periodization, protein timing, and hydration strategies are tailored to training phases. The days of generic advice have given way to data-driven fueling that optimizes recovery and performance."),
+        ("The history of the Olympics", "The ancient Olympics in Greece were revived in 1896 as a symbol of international peace. From 14 nations in Athens, the Games now involve over 200 countries. The Olympics have been shaped by politics, commercial interests, doping scandals, and expanding inclusion of new sports."),
+        ("How data analytics transformed basketball", "Analytics revolutionized basketball by quantifying shot quality, defensive impact, and lineup efficiency. The three-point revolution was driven by data showing corner threes are the most efficient shot. Teams that embraced analytics gained competitive advantages over those that relied on intuition."),
+        ("What makes a great team", "Great teams combine complementary skills with shared values and trust. Psychological safety — the belief that you can speak up without punishment — enables honest communication. Teams that manage conflict constructively and hold each other accountable consistently outperform talented but dysfunctional ones."),
+        ("How endurance athletes fuel long efforts", "Endurance performance beyond 90 minutes requires carbohydrate intake during exercise to maintain blood glucose and delay fatigue. Fat adaptation strategies have grown popular but evidence suggests carbohydrates remain superior fuel for high-intensity efforts."),
+        ("The evolution of tennis equipment", "Racket technology has transformed tennis from a game of touch and placement to one combining power and precision. Larger heads, lighter frames, and polyester strings enable modern players to generate extraordinary topspin. Surface differences create strategic variety."),
+        ("How recovery affects athletic performance", "Recovery is when adaptation occurs. Sleep, nutrition, active recovery, and stress management determine how quickly athletes can train again at high intensity. Overtraining syndrome results from insufficient recovery and can set performance back by months."),
+        ("What is sports psychology", "Sports psychology applies psychological principles to enhance athletic performance and wellbeing. Techniques include goal setting, arousal regulation, attentional control, and confidence building. Mental skills training is now considered essential preparation for elite competition."),
+        ("How swimming technique affects speed", "In swimming, technique matters more than fitness at most levels. Body position, stroke mechanics, turns, and starts determine speed. Even small technical improvements reduce drag dramatically. Elite swimmers spend enormous time on drill work to automate correct movement patterns."),
+        ("The business of professional sports", "Professional sports leagues generate billions through broadcasting rights, sponsorship, merchandise, and ticketing. Player values have risen dramatically as revenue has grown. Salary caps and luxury taxes attempt to maintain competitive balance while allowing successful teams to invest."),
+        ("How altitude training works", "Training at altitude stimulates the body to produce more red blood cells to compensate for lower oxygen availability. Athletes return to sea level with enhanced oxygen-carrying capacity. Legal altitude tents attempt to replicate this benefit. The adaptation lasts several weeks."),
+        ("What is periodization in training", "Periodization organizes training into phases — base building, intensity, competition, and recovery — each with specific goals. This structured approach prevents stagnation, reduces injury risk, and peaks performance for key competitions. Olympic athletes plan four-year training cycles."),
+        ("How contact sports affect the brain", "Research on chronic traumatic encephalopathy has transformed how contact sports approach head injuries. Sub-concussive impacts accumulate over careers, with serious long-term consequences. Rule changes, better equipment, and stricter return-to-play protocols attempt to reduce risk."),
+        ("The rise of esports", "Competitive gaming has grown into a billion-dollar industry with professional leagues, massive prize pools, and millions of dedicated viewers. Esports athletes demonstrate exceptional reaction times, strategic thinking, and teamwork. Universities now offer esports scholarships."),
+        ("How yoga improves athletic performance", "Yoga improves flexibility, balance, body awareness, and breathing efficiency. Many elite athletes across sports incorporate yoga for injury prevention and recovery. The mental benefits — focus and stress management — are equally valuable in high-pressure competition."),
+        ("What makes a champion mindset", "Champions maintain confidence despite setbacks, learn from failure rather than being defined by it, and focus on process rather than outcomes. They embrace pressure as opportunity rather than threat. These mental qualities can be developed through deliberate practice like any other skill."),
+    ]
+}
+
+# ===== Create all posts =====
+total = 0
+for category_name, category_posts in posts.items():
+    cat_id = category_ids.get(category_name)
+    if not cat_id:
+        print(f"❌ Category ID not found for {category_name}")
+        continue
+    for title, content in category_posts:
+        res = requests.post(f"{BASE_URL}/feed",
+            json={"title": title, "content": content, "category_id": cat_id},
+            cookies=cookies
+        )
+        if res.ok:
+            total += 1
+            print(f"✅ Post created: {title[:50]}...")
+        else:
+            print(f"❌ Failed: {title[:50]} — {res.json()}")
+
+print(f"\n🎉 Done! Created {total} posts across {len(category_ids)} categories.")

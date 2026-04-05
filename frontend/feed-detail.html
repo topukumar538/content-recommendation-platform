@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Post — ContentPlatform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; background: #f8fafc; }
+        h1, h2, h3 { font-family: 'Playfair Display', serif; }
+        .btn-action { padding: 10px 24px; border-radius: 50px; font-size: 14px; border: 1.5px solid; cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; font-weight: 500; }
+        .btn-like { border-color: #bfdbfe; color: #1d4ed8; background: #eff6ff; }
+        .btn-like:hover { background: #dbeafe; }
+        .btn-like.active { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+        .btn-save { border-color: #bbf7d0; color: #16a34a; background: #f0fdf4; }
+        .btn-save:hover { background: #dcfce7; }
+        .btn-save.active { background: #16a34a; color: white; border-color: #16a34a; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <nav class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-blue-700 text-xl">ContentPlatform</h1>
+        <div class="flex items-center gap-4">
+            <a href="/app/feed.html" class="text-sm text-gray-500 hover:text-gray-700 transition">← Back to Feed</a>
+            <button onclick="logout()" class="text-sm text-red-500 hover:text-red-700">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto mt-10 px-4 pb-20">
+
+        <!-- Main Post -->
+        <div class="bg-white rounded-2xl p-10 shadow-sm mb-6">
+            <span id="category" class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-100"></span>
+            <h2 id="title" class="text-gray-800 text-3xl mt-6 mb-3"></h2>
+            <p id="author" class="text-gray-400 text-xs mb-8 font-light"></p>
+            <div class="border-t border-gray-50 pt-6">
+                <p id="content" class="text-gray-600 leading-8 text-base"></p>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-3 mt-10 pt-6 border-t border-gray-50">
+                <button onclick="like()" id="like-btn" class="btn-action btn-like">👍 Like</button>
+                <button onclick="save()" id="save-btn" class="btn-action btn-save">🔖 Save</button>
+            </div>
+            <div id="message" class="hidden mt-4 text-sm text-green-600 font-medium"></div>
+        </div>
+
+        <!-- Related Posts -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm">
+            <h3 class="text-gray-700 text-lg mb-4">Related Posts</h3>
+            <div id="related-list"><p class="text-gray-400 text-sm">Loading...</p></div>
+        </div>
+
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search)
+        const feedId = parseInt(params.get("id"))
+        if (!feedId) window.location.href = "/app/feed.html"
+
+        async function loadPost() {
+            const res = await fetch(`/feed/${feedId}`, { credentials: "include" })
+            if (res.status === 401) return window.location.href = "/app/login.html"
+            if (!res.ok) return window.location.href = "/app/feed.html"
+            const feed = await res.json()
+
+            document.getElementById("category").textContent = feed.category
+            document.getElementById("title").textContent = feed.title
+            document.getElementById("author").textContent = `By ${feed.author}`
+            document.getElementById("content").textContent = feed.content
+
+            // load related after we have category_id
+            loadRelated(feed.category_id, feed.id)
+        }
+
+        async function loadRelated(categoryId, currentId) {
+            const res = await fetch(`/feed?category_id=${categoryId}`, { credentials: "include" })
+            if (!res.ok) return
+            const posts = await res.json()
+
+            // filter out current post and take max 3
+            const related = posts.filter(p => p.id !== currentId).slice(0, 3)
+            const container = document.getElementById("related-list")
+
+            if (related.length === 0) {
+                container.innerHTML = `<p class="text-gray-400 text-sm">No related posts.</p>`
+                return
+            }
+
+            container.innerHTML = related.map(p => `
+                <div onclick="window.location.href='/app/feed-detail.html?id=${p.id}'"
+                    class="flex justify-between items-center py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 rounded-lg px-2 transition">
+                    <div>
+                        <p class="text-gray-700 text-sm font-medium">${p.title}</p>
+                        <p class="text-gray-400 text-xs mt-0.5">By ${p.author}</p>
+                    </div>
+                    <span class="text-blue-400 text-sm">→</span>
+                </div>
+            `).join("")
+        }
+
+        async function like() {
+            const res = await fetch(`/feed/${feedId}/like`, { method: "POST", credentials: "include" })
+            if (res.ok) {
+                document.getElementById("like-btn").classList.add("active")
+                showMessage("Liked! ❤️")
+            }
+        }
+
+        async function save() {
+            const res = await fetch(`/feed/${feedId}/save`, { method: "POST", credentials: "include" })
+            if (res.ok) {
+                document.getElementById("save-btn").classList.add("active")
+                showMessage("Saved! 🔖")
+            }
+        }
+
+        function showMessage(msg) {
+            const el = document.getElementById("message")
+            el.textContent = msg
+            el.classList.remove("hidden")
+            setTimeout(() => el.classList.add("hidden"), 2000)
+        }
+
+        async function logout() {
+            await fetch("/auth/logout", { method: "POST", credentials: "include" })
+            window.location.href = "/app/index.html"
+        }
+
+        loadPost()
+    </script>
+</body>
+</html>

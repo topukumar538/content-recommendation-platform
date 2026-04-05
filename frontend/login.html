@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login — ContentPlatform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; }
+        h1, h2 { font-family: 'Playfair Display', serif; }
+        .hero-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 40%, #3b82f6 100%);
+        }
+        .glass {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+        }
+        .input-field {
+            width: 100%;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .input-field:focus { border-color: #1d4ed8; }
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+            color: white;
+            padding: 13px;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 15px;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .slide-in {
+            animation: slideIn 0.6s ease forwards;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen hero-bg flex">
+
+    <!-- Left side — branding -->
+    <div class="hidden lg:flex flex-1 flex-col justify-center px-16">
+        <h1 class="text-white text-4xl mb-4">Welcome back.</h1>
+        <p class="text-blue-200 text-lg font-light max-w-sm">Your personalized feed is waiting. Sign in to continue reading.</p>
+        <div class="mt-12 space-y-4">
+            <div class="flex items-center gap-3 text-blue-100">
+                <span class="text-2xl">📰</span>
+                <span class="text-sm font-light">Personalized content feed</span>
+            </div>
+            <div class="flex items-center gap-3 text-blue-100">
+                <span class="text-2xl">🧠</span>
+                <span class="text-sm font-light">Smart recommendations</span>
+            </div>
+            <div class="flex items-center gap-3 text-blue-100">
+                <span class="text-2xl">🔐</span>
+                <span class="text-sm font-light">Secure 2FA authentication</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right side — form -->
+    <div class="flex-1 flex items-center justify-center px-6 py-12">
+        <div class="glass rounded-2xl p-10 w-full max-w-md slide-in">
+            <div class="mb-8">
+                <h2 class="text-gray-800 text-3xl mb-1">Sign in</h2>
+                <p class="text-gray-500 text-sm font-light">Enter your credentials to continue</p>
+            </div>
+
+            <div id="error" class="hidden bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-5 text-sm"></div>
+
+            <div class="mb-5">
+                <label class="block text-gray-600 text-sm mb-2 font-medium">Email</label>
+                <input id="email" type="email" placeholder="you@example.com" class="input-field"
+                    onkeydown="if(event.key==='Enter') login()"/>
+            </div>
+
+            <div class="mb-2">
+                <label class="block text-gray-600 text-sm mb-2 font-medium">Password</label>
+                <input id="password" type="password" placeholder="Your password" class="input-field"
+                    onkeydown="if(event.key==='Enter') login()"/>
+            </div>
+
+            <div class="text-right mb-6">
+                <a href="/app/forgot-password.html" class="text-blue-600 text-sm hover:underline">Forgot password?</a>
+            </div>
+
+            <button onclick="login()" id="btn" class="btn-primary">Sign In</button>
+
+            <p class="text-center text-sm text-gray-500 mt-6">
+                Don't have an account?
+                <a href="/app/signup.html" class="text-blue-600 hover:underline font-medium">Sign up</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function showError(msg) {
+            const el = document.getElementById("error")
+            el.textContent = msg
+            el.classList.remove("hidden")
+        }
+        async function login() {
+            const email = document.getElementById("email").value.trim()
+            const password = document.getElementById("password").value
+            if (!email || !password) return showError("All fields are required")
+            const btn = document.getElementById("btn")
+            btn.textContent = "Signing in..."
+            btn.disabled = true
+            try {
+                const res = await fetch("/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ email, password })
+                })
+                const data = await res.json()
+                if (res.ok) {
+                    window.location.href = data.role === "admin" ? "/app/admin.html" : "/app/feed.html"
+                } else {
+                    showError(data.detail)
+                }
+            } finally {
+                btn.textContent = "Sign In"
+                btn.disabled = false
+            }
+        }
+    </script>
+</body>
+</html>

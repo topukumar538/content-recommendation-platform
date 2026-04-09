@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_DAYS: int
+    LOGIN_EXPIRE_TIME: int
+    OTP_EXPIRE_MIN: int
     GMAIL_USER: str
     GMAIL_PASSWORD: str
-    OTP_EXPIRE_MIN: int
-    LOGIN_EXPIRE_TIME: int
 
     class Config:
         env_file = str(BASE_DIR / ".env")

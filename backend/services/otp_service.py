@@ -42,7 +42,6 @@ If you did not request this, ignore this email."""
     msg.attach(MIMEText(body, "plain"))
 
     try:
-        # use port 587 with TLS instead of port 465 SSL
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.ehlo()
             server.starttls()

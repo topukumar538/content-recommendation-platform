@@ -14,16 +14,13 @@ def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_user
         UserInteraction.user_id == user["user_id"],
         UserInteraction.action == "saved"
     ).all()
-
     feed_ids = [i.feed_id for i in interactions]
     if not feed_ids:
         return []
-
     feeds = db.query(Feed).options(
         joinedload(Feed.category),
         joinedload(Feed.author)
     ).filter(Feed.id.in_(feed_ids)).all()
-
     return [
         {
             "id": f.id,

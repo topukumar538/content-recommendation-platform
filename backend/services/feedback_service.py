@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from models import Feedback
 from schemas.feedback import FeedbackCreate
 
+
 def submit_feedback(user_id: int, data: FeedbackCreate, db: Session):
     if not 1 <= data.rating <= 5:
         raise ValueError("Rating must be between 1 and 5")
@@ -15,6 +16,7 @@ def submit_feedback(user_id: int, data: FeedbackCreate, db: Session):
     db.add(feedback)
     db.commit()
     return {"message": "Feedback submitted successfully"}
+
 
 def get_all_feedback(db: Session):
     feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
@@ -31,6 +33,7 @@ def get_all_feedback(db: Session):
         for f in feedbacks
     ]
 
+
 def resolve_feedback(feedback_id: int, db: Session):
     feedback = db.query(Feedback).filter(Feedback.id == feedback_id).first()
     if not feedback:
@@ -38,6 +41,7 @@ def resolve_feedback(feedback_id: int, db: Session):
     feedback.is_resolved = not feedback.is_resolved
     db.commit()
     return {"message": "Updated", "is_resolved": feedback.is_resolved}
+
 
 def delete_feedback(feedback_id: int, db: Session):
     feedback = db.query(Feedback).filter(Feedback.id == feedback_id).first()

@@ -41,7 +41,7 @@ def get_feed(
     request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    search= Query(default=None),
+    search: Optional[str] = Query(default=None),
     category_id: Optional[int] = Query(default=None)
 ):
     feeds = feed_service.get_personalized_feed(user["user_id"], db, search, category_id)

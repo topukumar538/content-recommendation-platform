@@ -1,6 +1,6 @@
 # ContentPlatform
 
-A full-stack personalized content platform built with FastAPI and PostgreSQL. Features a recommendation engine using an Explore vs Exploit algorithm, JWT authentication with email OTP verification, and a complete admin panel.
+A full-stack personalized content platform built with FastAPI and PostgreSQL. Features a multi-tier recommendation engine using Softmax sampling, time decay scoring, and epsilon-greedy exploration. Includes JWT authentication with email OTP verification and a complete admin panel.
 
 Built as a portfolio project to demonstrate backend engineering skills.
 
@@ -28,48 +28,49 @@ Built as a portfolio project to demonstrate backend engineering skills.
 ```
 content-platform/
 ├── backend/
-│   ├── main.py                    # app entry point, CORS, routing, scheduler
-│   ├── database.py                # SQLAlchemy engine, session, Base
-│   ├── models.py                  # all database table definitions
-│   ├── scheduler.py               # background score recalculation (every 10 min)
+│   ├── main.py                         # app entry point, CORS, routing, scheduler
+│   ├── database.py                     # SQLAlchemy engine, session, Base
+│   ├── models.py                       # all database table definitions
+│   ├── scheduler.py                    # background score recalculation (every 10 min)
 │   ├── requirements.txt
 │   ├── .env
 │   ├── core/
-│   │   ├── config.py              # centralized settings from .env
-│   │   ├── security.py            # JWT, password hashing
-│   │   └── dependencies.py        # route guards, auth helpers
+│   │   ├── config.py                   # centralized settings from .env
+│   │   ├── security.py                 # JWT, password hashing
+│   │   └── dependencies.py             # route guards, auth helpers
 │   ├── schemas/
-│   │   ├── auth.py                # signup, login, OTP, password schemas
-│   │   ├── feed.py                # feed create/update/response schemas
-│   │   ├── category.py            # category schemas
-│   │   ├── feedback.py            # feedback schemas
-│   │   └── user.py                # profile update schema
+│   │   ├── auth.py                     # signup, login, OTP, password schemas
+│   │   ├── feed.py                     # feed create/update/response schemas
+│   │   ├── category.py                 # category schemas
+│   │   ├── feedback.py                 # feedback schemas
+│   │   └── user.py                     # profile update schema
 │   ├── routes/
-│   │   ├── auth.py                # /auth/* endpoints
-│   │   ├── feed.py                # /feed/* and /categories/* endpoints
-│   │   ├── admin.py               # /admin/* endpoints
-│   │   └── user.py                # /user/* endpoints
+│   │   ├── auth.py                     # /auth/* endpoints
+│   │   ├── feed.py                     # /feed/* and /categories/* endpoints
+│   │   ├── admin.py                    # /admin/* endpoints
+│   │   └── user.py                     # /user/* endpoints
 │   └── services/
-│       ├── auth_service.py        # signup, login, OTP, password logic
-│       ├── otp_service.py         # OTP generation, email sending, verification
-│       ├── feed_service.py        # feed, categories, interactions, recommendation
-│       ├── feedback_service.py    # feedback CRUD
-│       └── admin_service.py       # user management, stats
+│       ├── auth_service.py             # signup, login, OTP, password logic
+│       ├── otp_service.py              # OTP generation, email sending, verification
+│       ├── feed_service.py             # feed, categories, interactions
+│       ├── recommendation_service.py   # full recommendation algorithm
+│       ├── feedback_service.py         # feedback CRUD
+│       └── admin_service.py            # user management, stats
 └── frontend/
-    ├── index.html                 # landing page with smart redirect
+    ├── index.html                      # landing page with smart redirect
     ├── signup.html
-    ├── verify.html                # OTP verification + 60s resend timer
+    ├── verify.html                     # OTP verification + 60s resend timer
     ├── login.html
     ├── forgot-password.html
     ├── reset-password.html
-    ├── feed.html                  # personalized feed + search + category filter
-    ├── feed-detail.html           # post detail + like + save + related posts
-    ├── saved.html                 # saved posts with unsave option
-    ├── profile.html               # update username + change password via OTP
-    ├── feedback.html              # star rating (1-5) + message
-    ├── admin.html                 # dashboard stats + categories + posts
-    ├── admin-users.html           # view, block/unblock, delete users
-    └── admin-feedback.html        # view, resolve, delete feedback
+    ├── feed.html                       # personalized feed + search + category filter
+    ├── feed-detail.html                # post detail + like + save + related posts
+    ├── saved.html                      # saved posts with unsave option
+    ├── profile.html                    # update username + change password via OTP
+    ├── feedback.html                   # star rating (1-5) + message
+    ├── admin.html                      # dashboard stats + categories + posts
+    ├── admin-users.html                # view, block/unblock, delete users
+    └── admin-feedback.html             # view, resolve, delete feedback
 ```
 
 ---
@@ -89,25 +90,122 @@ content-platform/
 
 ### Recommendation Engine
 
-Feed is ordered using an **Explore vs Exploit** algorithm:
+The feed uses a **3-tier Softmax Explore vs Exploit algorithm** with time decay scoring.
+
+#### How Scoring Works
+
+Every post gets a combined score before ranking:
 
 ```
-First 20 posts  → highest preference score        (exploit known interests)
-Next 20 posts   → newest posts not in first 20    (explore new content)
-Remaining       → score × 0.5 + recency × 0.5    (balanced mixture)
+score = (0.7 × preference_score) + (0.3 × freshness_score) + 0.1
 ```
 
-Interaction weights used to calculate preference scores:
+**preference_score** — how much the user likes this category, stored as a probability:
 ```
 viewed → weight 1
 liked  → weight 3
 saved  → weight 5
+
+example: user has 10 Technology interactions, 5 Science interactions
+Technology score = 10 / 15 = 0.67
+Science score    = 5  / 15 = 0.33
 ```
 
-Scores are stored as probabilities per category per user and recalculated every 10 minutes by a background scheduler. This means the feed reorders periodically based on accumulated interactions rather than on every single action, keeping the experience stable while still personalizing over time.
+**freshness_score** — time decay using exponential decay over 24 hours:
+```
+freshness = exp(-hours_since_posted / 24)
+
+post from 1 hour ago  → exp(-1/24)  = 0.96  (very fresh)
+post from 24 hours ago → exp(-1)    = 0.37  (moderately fresh)
+post from 72 hours ago → exp(-3)    = 0.05  (mostly stale)
+```
+
+**0.1 base score** — prevents any post from having zero probability, ensuring no content is completely dead.
+
+---
+
+#### What is Softmax and Why It Is Used
+
+Softmax converts a list of raw scores into probabilities that sum to exactly 1.0. This allows weighted random selection — higher scored posts are more likely to be selected, but lower scored posts still have a chance.
+
+**The formula:**
+```
+softmax(score) = exp(score / temperature) / sum(exp(all scores / temperature))
+```
+
+**Temperature controls exploration sharpness:**
+```
+temperature = 0.3 → very sharp → high scores dominate almost completely
+temperature = 0.7 → balanced  → high scores likely but low scores still have chance
+temperature = 2.0 → very flat → all posts get nearly equal probability
+
+this project uses temperature = 0.7 for balanced exploration
+```
+
+**Example with 3 posts:**
+```
+raw scores: [0.8, 0.5, 0.2]
+after softmax (temperature=0.7):
+  post A → 0.65 probability (likely but not guaranteed)
+  post B → 0.25 probability (moderate chance)
+  post C → 0.10 probability (small but real chance)
+
+without softmax (greedy):
+  post A → always selected (no variety)
+```
+
+This is the same mechanism used in ChatGPT's temperature slider — higher temperature means more creative/random responses, lower temperature means more predictable responses.
+
+---
+
+#### 3-Tier Feed Algorithm
+
+```
+TIER 1 (slots 1–15)   → deterministic exploit
+                         top 15 posts by combined score
+                         max 3 posts per category enforced
+                         ensures diversity, prevents one topic dominating
+
+TIER 2 (slots 16–20)  → softmax weighted exploration
+                         5 posts selected by weighted random sampling
+                         high score = more likely, not guaranteed
+                         gives variety — posts user might not have seen
+
+TIER 3 (slots 21+)    → newest unseen posts
+                         all remaining posts ordered by date
+                         ensures fresh content is always discoverable
+
+EPSILON               → 10% chance of one truly random post
+                         injected anywhere in the feed
+                         breaks any remaining filter bubble
+```
+
+**Why this structure:**
+- Pure exploitation (always show highest scored) creates a filter bubble — users only see what they already like
+- Pure exploration (always random) makes personalization useless
+- This 3-tier structure balances both — users see relevant content first, discover new content second, and always have access to fresh posts
+
+---
+
+#### Score Update Cycle
+
+Scores are recalculated every 10 minutes by a background scheduler:
+
+```
+user interacts (view/like/save)
+→ interaction recorded instantly in UserInteractions table
+→ scheduler runs every 10 minutes
+→ recalculates category probability scores for all active users
+→ stores updated scores in CategoryPreferences table
+→ next feed load uses updated scores
+```
+
+Scheduled recalculation scales better than instant updates — one batch job for all users every 10 minutes is more efficient than one database write per interaction per user at scale.
+
+---
 
 ### Feed
-- Personalized order based on user preference scores
+- Personalized order based on recommendation algorithm
 - Search by title or content (case insensitive)
 - Filter by category
 - Related posts on detail page (same category, excluding current)
@@ -216,8 +314,8 @@ DELETE /admin/feedback/{id}        delete feedback
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/topukumar538/content-platform.git
-cd content-platform
+git clone https://github.com/topukumar538/content-recommendation-platform.git
+cd content-recommendation-platform
 ```
 
 ### 2. Create virtual environment
@@ -255,8 +353,7 @@ GMAIL_PASSWORD=your-gmail-app-password
 
 ### 6. Run the server
 ```bash
-cd backend
-uvicorn main:app --reload --port 8000
+uvicorn main:app --port 8000
 ```
 
 ### 7. Access the app
@@ -281,7 +378,6 @@ Logout and login again to get a new token with admin role.
 
 Creates 5 categories and 100 posts for testing:
 ```bash
-cd backend
 python seed.py
 ```
 Update the email and password at the top of `seed.py` before running.
@@ -291,22 +387,50 @@ Update the email and password at the top of `seed.py` before running.
 ## Key Design Decisions
 
 **Routes vs Services separation**
-Routes handle HTTP only — request parsing and response formatting. Services contain all business logic with no HTTP dependency. This makes services independently testable and reusable.
+Routes handle HTTP only — request parsing and response formatting. Services contain all business logic with no HTTP dependency. The recommendation algorithm is fully isolated in `recommendation_service.py`, making it independently testable and easy to swap or upgrade without touching any route or other service.
 
 **httponly cookies for JWT**
 Storing the JWT in an httponly cookie prevents JavaScript from reading it, protecting against XSS attacks. The cookie is set with `samesite=lax` to prevent CSRF.
 
-**Scheduled score updates**
-Preference scores are recalculated every 10 minutes by a background scheduler rather than on every single interaction. This keeps the feed stable — scores accumulate meaningfully over time instead of reordering after every click. Interactions are still recorded instantly; only the score recalculation is batched.
+**Softmax temperature at 0.7**
+A temperature of 0.3 would make softmax almost deterministic — high scored posts would dominate completely. A temperature of 2.0 would make all posts equally likely. At 0.7 the algorithm favors high scored posts while still giving lower scored posts a meaningful chance. This is the same temperature concept used in large language models.
 
-**Explore vs Exploit algorithm**
-Without exploration, users get stuck seeing only content similar to what they have already interacted with — a filter bubble. Without exploitation, personalization has no effect. The split balances both: the top 20 slots reward known preferences, the next 20 introduce discovery, and the rest blend both signals.
+**Scheduled score updates over instant updates**
+Recalculating scores every 10 minutes in a batch job scales better than recalculating on every single interaction. At small scale the difference is negligible. At large scale — thousands of concurrent users — instant per-interaction recalculation would create excessive database writes. The batch approach means one scheduled job updates all users efficiently.
+
+**Time decay with exponential function**
+Linear decay (subtract a fixed amount per hour) would make old posts score zero after a fixed time. Exponential decay using `exp(-hours/24)` is asymptotic — posts never completely die but their freshness approaches zero over time. This mirrors how real content platforms treat recency.
+
+**Category diversity enforcement in Tier 1**
+Without the max-3-per-category limit, Tier 1 could be dominated by 15 posts from a single category the user heavily interacted with. The limit ensures users always see variety in their top results even when they have a strong preference for one topic.
 
 **is_active vs is_blocked separation**
 `is_active` tracks whether a user has verified their email. `is_blocked` tracks whether an admin has restricted access. Keeping them separate allows independent control — an unverified user is not the same as a blocked one.
 
 **autocommit=False**
 Explicit transaction control means changes only persist when `db.commit()` is called. This prevents accidental partial writes and allows clean rollback on failure.
+
+**N+1 prevention with joinedload**
+All feed queries use SQLAlchemy `joinedload` to fetch related category and author data in a single SQL JOIN. Without this, accessing `feed.category.name` for 100 posts would fire 200 extra database queries.
+
+---
+
+## Recommendation Algorithm Parameters
+
+All algorithm parameters are defined as named constants in `recommendation_service.py`:
+
+| Parameter | Value | Description |
+|---|---|---|
+| `FEED_LIMIT` | 500 | Max posts fetched from database per request |
+| `TIER1_SIZE` | 15 | Number of deterministic top scored posts |
+| `TIER1_MAX_PER_CAT` | 3 | Max posts per category in Tier 1 |
+| `TIER2_SIZE` | 5 | Number of softmax sampled wildcard posts |
+| `SOFTMAX_TEMPERATURE` | 0.7 | Exploration sharpness (lower = more deterministic) |
+| `EPSILON` | 0.1 | Probability of injecting a truly random post |
+| `PREF_WEIGHT` | 0.7 | Weight given to preference score in combined score |
+| `FRESH_WEIGHT` | 0.3 | Weight given to freshness score in combined score |
+| `BASE_SCORE` | 0.1 | Minimum score floor to prevent zero probability |
+| `TIME_DECAY_HOURS` | 24 | Half-life of freshness decay in hours |
 
 ---
 

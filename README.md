@@ -353,7 +353,7 @@ GMAIL_PASSWORD=your-gmail-app-password
 
 ### 6. Run the server
 ```bash
-uvicorn main:app --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 ### 7. Access the app

@@ -4,8 +4,8 @@ BASE_URL = "http://localhost:8000"
 
 # ===== STEP 1 — Login as admin =====
 login_res = requests.post(f"{BASE_URL}/auth/login", json={
-    "email": "topukumar538@gmail.com",  # ← change this
-    "password": "123456"        # ← change this
+    "email": "your_admin_gmail",  # ← change this
+    "password": "admin_password"        # ← change this
 })
 
 if not login_res.ok:

@@ -14,6 +14,6 @@ class Settings(BaseSettings):
     GMAIL_PASSWORD: str
 
     class Config:
-        env_file = str(BASE_DIR / ".env")
+        env_file = str(BASE_DIR / ".env")  # Tells Pydantic to load variables from .env.
 
 settings = Settings()  # type: ignore

@@ -52,31 +52,9 @@ def get_stats(db: Session):
     total_interactions = db.query(UserInteraction).count()
     total_feedback = db.query(Feedback).count()
 
-    most_liked = db.query(
-        Feed.title,
-        func.count(UserInteraction.id).label("count")
-    ).join(UserInteraction, UserInteraction.feed_id == Feed.id)\
-     .filter(UserInteraction.action == "liked")\
-     .group_by(Feed.id)\
-     .order_by(func.count(UserInteraction.id).desc())\
-     .first()
-
-    most_saved = db.query(
-        Feed.title,
-        func.count(UserInteraction.id).label("count")
-    ).join(UserInteraction, UserInteraction.feed_id == Feed.id)\
-     .filter(UserInteraction.action == "saved")\
-     .group_by(Feed.id)\
-     .order_by(func.count(UserInteraction.id).desc())\
-     .first()
-
     return {
         "total_users": total_users,
         "total_posts": total_posts,
         "total_interactions": total_interactions,
         "total_feedback": total_feedback,
-        "most_liked_post": most_liked.title if most_liked else None,
-        "most_liked_count": most_liked.count if most_liked else 0,
-        "most_saved_post": most_saved.title if most_saved else None,
-        "most_saved_count": most_saved.count if most_saved else 0,
     }

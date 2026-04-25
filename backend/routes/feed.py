@@ -42,21 +42,30 @@ def get_feed(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     search: Optional[str] = Query(default=None),
-    category_id: Optional[int] = Query(default=None)
+    category_id: Optional[int] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100)
 ):
-    feeds = feed_service.get_personalized_feed(user["user_id"], db, search, category_id)
-    return [
-        {
-            "id": f.id,
-            "title": f.title,
-            "content": f.content,
-            "category": f.category.name,
-            "category_id": f.category_id,
-            "author": f.author.username,
-            "created_at": str(f.created_at)
-        }
-        for f in feeds
-    ]
+    result = feed_service.get_personalized_feed(
+        user["user_id"], db, search, category_id, page, limit
+    )
+    return {
+        "items": [
+            {
+                "id": f.id,
+                "title": f.title,
+                "content": f.content,
+                "category": f.category.name,
+                "category_id": f.category_id,
+                "author": f.author.username,
+                "created_at": str(f.created_at)
+            }
+            for f in result["items"]
+        ],
+        "total": result["total"],
+        "page": result["page"],
+        "pages": result["pages"]
+    }
 
 @router.get("/feed/{feed_id}")
 def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):

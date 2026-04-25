@@ -8,6 +8,7 @@ from routes import auth, feed, admin, user
 from core.security import decode_token
 from jose import JWTError
 from scheduler import start_scheduler
+from core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,7 +21,7 @@ app = FastAPI(title="ContentPlatform API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[settings.ALLOWED_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]

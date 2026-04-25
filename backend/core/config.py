@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MIN: int
     GMAIL_USER: str
     GMAIL_PASSWORD: str
+    ALLOWED_ORIGINS: str = "http://localhost:8000"  # ← add this
 
     class Config:
         env_file = str(BASE_DIR / ".env")  # Tells Pydantic to load variables from .env.

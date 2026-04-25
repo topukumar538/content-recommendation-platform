@@ -2,6 +2,9 @@ from sqlalchemy.orm import Session, joinedload
 from models import Feed, Category, UserInteraction, CategoryPreference
 from schemas.feed import FeedCreate, FeedUpdate
 from services.recommendation_service import rank_feeds, FEED_LIMIT
+import math
+from sqlalchemy.exc import IntegrityError
+
 
 
 def get_all_categories(db: Session):
@@ -45,7 +48,7 @@ def delete_category(category_id: int, db: Session):
     return {"message": "Category deleted"}
 
 
-def get_personalized_feed(user_id: int, db: Session, search: str, category_id):
+def get_personalized_feed(user_id: int, db: Session, search: str, category_id, page: int = 1, limit: int = 20):
     query = db.query(Feed).options(
         joinedload(Feed.category),
         joinedload(Feed.author)
@@ -61,13 +64,21 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id):
     all_feeds = query.limit(FEED_LIMIT).all()
 
     if not all_feeds:
-        return []
+        return {"items": [], "total": 0, "page": page, "pages": 0}
 
     preferences = db.query(CategoryPreference).filter(
         CategoryPreference.user_id == user_id
     ).all()
 
-    return rank_feeds(all_feeds, preferences)
+    ranked = rank_feeds(all_feeds, preferences)
+
+    # pagination happens AFTER ranking
+    total  = len(ranked)
+    pages  = math.ceil(total / limit)
+    offset = (page - 1) * limit
+    items  = ranked[offset : offset + limit]
+
+    return {"items": items, "total": total, "page": page, "pages": pages}
 
 
 def get_feed_by_id(feed_id: int, db: Session):
@@ -118,12 +129,10 @@ def delete_feed(feed_id: int, db: Session):
     return {"message": "Post deleted"}
 
 
+
 def record_interaction(user_id: int, feed_id: int, action: str, db: Session):
-    existing = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user_id,
-        UserInteraction.feed_id == feed_id,
-        UserInteraction.action == action
-    ).first()
-    if not existing:
+    try:
         db.add(UserInteraction(user_id=user_id, feed_id=feed_id, action=action))
         db.commit()
+    except IntegrityError:
+        db.rollback()  # duplicate — silently ignore

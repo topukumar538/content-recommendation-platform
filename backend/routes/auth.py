@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from core.dependencies import get_current_active_user
 from core.config import settings
 from database import get_db
+from services.otp_service import send_otp_email
+
 from schemas.auth import (
     SignupRequest, LoginRequest, VerifyOTPRequest, ResendOTPRequest,
     ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
@@ -12,16 +14,21 @@ from services import auth_service
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/signup")
-def signup(data: SignupRequest, db: Session = Depends(get_db)):
+def signup(data: SignupRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
-        return auth_service.signup(data, db)
+        result = auth_service.signup(data, db)
+        # add email to background — runs AFTER response is sent
+        background_tasks.add_task(send_otp_email, result["email"], result["code"], result["purpose"])
+        return {"message": result["message"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
+    
 @router.post("/resend-otp")
-def resend_otp(data: ResendOTPRequest, db: Session = Depends(get_db)):
+def resend_otp(data: ResendOTPRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
-        return auth_service.resend_otp(data.email, data.purpose, db)
+        result = auth_service.resend_otp(data.email, data.purpose, db)
+        background_tasks.add_task(send_otp_email, result["email"], result["code"], result["purpose"])
+        return {"message": result["message"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -53,9 +60,11 @@ def logout(response: Response):
     return {"message": "Logged out successfully"}
 
 @router.post("/forgot-password")
-def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(data: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
-        return auth_service.forgot_password(data.email, db)
+        result = auth_service.forgot_password(data.email, db)
+        background_tasks.add_task(send_otp_email, result["email"], result["code"], result["purpose"])
+        return {"message": result["message"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -70,11 +79,14 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
 
 @router.post("/request-change-password-otp")
 def request_change_password_otp(
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     try:
-        return auth_service.request_change_password_otp(user, db)
+        result = auth_service.request_change_password_otp(user, db)
+        background_tasks.add_task(send_otp_email, result["email"], result["code"], result["purpose"])
+        return {"message": result["message"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

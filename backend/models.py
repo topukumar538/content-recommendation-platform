@@ -19,13 +19,13 @@ class User(Base):
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String, index=True)
-    code: Mapped[str] = mapped_column(String)
-    purpose: Mapped[str] = mapped_column(String)
-    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
+    id         : Mapped[int]  = mapped_column(primary_key=True)
+    email      : Mapped[str]  = mapped_column(String, index=True)
+    code       : Mapped[str]  = mapped_column(String)
+    purpose    : Mapped[str]  = mapped_column(String)
+    is_used    : Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts   : Mapped[int]  = mapped_column(Integer, default=0)
+    created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class Category(Base):
     __tablename__ = "categories"
@@ -46,14 +46,19 @@ class Feed(Base):
     author: Mapped["User"] = relationship("User")
 
 
+from sqlalchemy import UniqueConstraint
+
 class UserInteraction(Base):
     __tablename__ = "user_interactions"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id"), index=True)
-    action: Mapped[str] = mapped_column(String)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id         : Mapped[int] = mapped_column(primary_key=True)
+    user_id    : Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    feed_id    : Mapped[int] = mapped_column(ForeignKey("feeds.id"), index=True)
+    action     : Mapped[str] = mapped_column(String)
+    created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    __table_args__ = (
+        UniqueConstraint("user_id", "feed_id", "action", name="uq_user_feed_action"),
+    )
 
 class CategoryPreference(Base):
     __tablename__ = "category_preferences"

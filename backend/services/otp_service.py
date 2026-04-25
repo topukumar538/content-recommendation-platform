@@ -52,19 +52,22 @@ If you did not request this, ignore this email."""
         print(f"Email sending failed: {e}")
         raise Exception("Failed to send OTP email")
 
-def create_otp(email: str, purpose: str, db: Session):
+def create_otp(email: str, purpose: str, db: Session) -> str:
+    # delete old OTPs
     db.query(OTPCode).filter(
         OTPCode.email == email,
         OTPCode.purpose == purpose,
         OTPCode.is_used == False
     ).delete()
     db.commit()
+
+    # generate and save new OTP
     code = generate_otp()
     otp = OTPCode(email=email, code=code, purpose=purpose)
     db.add(otp)
     db.commit()
-    send_otp_email(email, code, purpose)
-    return code
+
+    return code   # ← just returns code, no email sent here anymore
 
 def verify_otp(email: str, code: str, purpose: str, db: Session) -> bool:
     otp = db.query(OTPCode).filter(

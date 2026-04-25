@@ -9,8 +9,9 @@ def signup(data: SignupRequest, db: Session):
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
         if not existing.is_active:
-            create_otp(data.email, "signup", db)
-            return {"message": "OTP resent to your email. Please verify."}
+            code = create_otp(data.email, "signup", db)
+            return {"message": "OTP resent to your email. Please verify.",
+                    "email": data.email, "code": code, "purpose": "signup"}
         raise ValueError("Email already registered")
     if len(data.password) < 6:
         raise ValueError("Password must be at least 6 characters")
@@ -22,9 +23,9 @@ def signup(data: SignupRequest, db: Session):
     )
     db.add(user)
     db.commit()
-    create_otp(data.email, "signup", db)
-    return {"message": "OTP sent to your email. Please verify."}
-
+    code = create_otp(data.email, "signup", db)
+    return {"message": "OTP sent to your email. Please verify.",
+            "email": data.email, "code": code, "purpose": "signup"}
 
 def resend_otp(email: str, purpose: str, db: Session):
     user = db.query(User).filter(User.email == email).first()
@@ -32,8 +33,8 @@ def resend_otp(email: str, purpose: str, db: Session):
         raise ValueError("Email not found")
     if purpose == "signup" and user.is_active:
         raise ValueError("Account already verified")
-    create_otp(email, purpose, db)
-    return {"message": "OTP resent successfully"}
+    code = create_otp(email, purpose, db)
+    return {"message": "OTP resent successfully", "email": email, "code": code, "purpose": purpose}
 
 
 def verify_signup_otp(email: str, code: str, db: Session):
@@ -73,8 +74,8 @@ def forgot_password(email: str, db: Session):
         raise ValueError("Email not found")
     if not user.is_active:
         raise ValueError("Please verify your account first")
-    create_otp(email, "forgot_password", db)
-    return {"message": "OTP sent to your email"}
+    code = create_otp(email, "forgot_password", db)
+    return {"message": "OTP sent to your email", "email": email, "code": code, "purpose": "forgot_password"}
 
 
 def reset_password(email: str, code: str, new_password: str, confirm_password: str, db: Session):
@@ -94,8 +95,8 @@ def reset_password(email: str, code: str, new_password: str, confirm_password: s
 
 
 def request_change_password_otp(user: User, db: Session):
-    create_otp(user.email, "change_password", db)
-    return {"message": "OTP sent to your email"}
+    code = create_otp(user.email, "change_password", db)
+    return {"message": "OTP sent to your email", "email": user.email, "code": code, "purpose": "change_password"}
 
 
 def change_password(user: User, code: str, new_password: str, confirm_password: str, db: Session):

@@ -37,17 +37,15 @@ def resend_otp(email: str, purpose: str, db: Session):
     return {"message": "OTP resent successfully", "email": email, "code": code, "purpose": purpose}
 
 
+# verify_signup_otp()
 def verify_signup_otp(email: str, code: str, db: Session):
-    success = verify_otp(email, code, "signup", db)
-    if not success:
-        raise ValueError("Invalid or expired OTP")
+    verify_otp(email, code, "signup", db)  # ← no if check needed
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise ValueError("User not found")
     user.is_active = True
     db.commit()
     return {"message": "Account verified successfully. Please login."}
-
 
 def login(data: LoginRequest, db: Session):
     user = db.query(User).filter(User.email == data.email).first()
@@ -78,14 +76,13 @@ def forgot_password(email: str, db: Session):
     return {"message": "OTP sent to your email", "email": email, "code": code, "purpose": "forgot_password"}
 
 
-def reset_password(email: str, code: str, new_password: str, confirm_password: str, db: Session):
+# reset_password()
+def reset_password(email, code, new_password, confirm_password, db):
     if new_password != confirm_password:
         raise ValueError("Passwords do not match")
     if len(new_password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    success = verify_otp(email, code, "forgot_password", db)
-    if not success:
-        raise ValueError("Invalid or expired OTP")
+    verify_otp(email, code, "forgot_password", db)  # ← no if check needed
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise ValueError("User not found")
@@ -99,14 +96,13 @@ def request_change_password_otp(user: User, db: Session):
     return {"message": "OTP sent to your email", "email": user.email, "code": code, "purpose": "change_password"}
 
 
-def change_password(user: User, code: str, new_password: str, confirm_password: str, db: Session):
+# change_password()
+def change_password(user, code, new_password, confirm_password, db):
     if new_password != confirm_password:
         raise ValueError("Passwords do not match")
     if len(new_password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    success = verify_otp(user.email, code, "change_password", db)
-    if not success:
-        raise ValueError("Invalid or expired OTP")
+    verify_otp(user.email, code, "change_password", db)  # ← no if check needed
     db_user = db.query(User).filter(User.id == user.id).first()
     if not db_user:
         raise ValueError("User not found")

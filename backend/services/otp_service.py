@@ -69,19 +69,39 @@ def create_otp(email: str, purpose: str, db: Session) -> str:
 
     return code   # ← just returns code, no email sent here anymore
 
+
+MAX_OTP_ATTEMPTS = 5
+
 def verify_otp(email: str, code: str, purpose: str, db: Session) -> bool:
     otp = db.query(OTPCode).filter(
         OTPCode.email == email,
-        OTPCode.code == code,
         OTPCode.purpose == purpose,
         OTPCode.is_used == False
     ).first()
+
     if not otp:
-        return False
+        raise ValueError("Invalid OTP. Please request a new one.")
+
+    # check expiry
     created_at = otp.created_at.replace(tzinfo=None)
     expiry = created_at + timedelta(minutes=settings.OTP_EXPIRE_MIN)
     if datetime.utcnow() > expiry:
-        return False
+        raise ValueError("OTP expired. Please request a new one.")
+
+    # check if locked
+    if otp.attempts >= MAX_OTP_ATTEMPTS:
+        raise ValueError("Too many wrong attempts. Please request a new OTP.")
+
+    # wrong code — increment attempts
+    if otp.code != code:
+        otp.attempts += 1
+        remaining = MAX_OTP_ATTEMPTS - otp.attempts
+        db.commit()
+        if remaining == 0:
+            raise ValueError("Too many wrong attempts. Please request a new OTP.")
+        raise ValueError(f"Wrong OTP. {remaining} attempts remaining.")
+
+    # correct code
     otp.is_used = True
     db.commit()
     return True

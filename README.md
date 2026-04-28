@@ -1,12 +1,57 @@
-# ContentPlatform
+# 🚀 ContentPlatform — Personalized Recommendation System
 
-A full-stack personalized content platform built with FastAPI and PostgreSQL. Features a multi-tier recommendation engine using Softmax sampling, time decay scoring, and epsilon-greedy exploration. Includes JWT authentication with email OTP verification, OTP rate limiting, background task processing, and a complete admin panel with role-based access control.
+A production-style backend system that delivers a personalized content feed using a multi-tier recommendation engine.
 
-Built as a portfolio project to demonstrate backend engineering skills — targeting production-grade quality.
+Built with focus on:
+- System design and scalability tradeoffs
+- Real-world backend architecture patterns
+- Security best practices
+- Measurable performance optimizations
 
 ---
 
-## Tech Stack
+## 🧠 Key Highlights
+
+- 🔐 **Secure auth** — JWT in httponly cookies + OTP verification with brute force protection
+- 🧠 **Advanced recommendation engine:**
+  - Softmax sampling (temperature=0.7) for controlled randomness
+  - Time decay `exp(-t/24h)` for content freshness
+  - Explore vs exploit strategy — prevents filter bubbles
+  - Category diversity constraints in Tier 1
+- ⏰ **Background job processing** — batch score updates every 10 min, email off request path
+- 🏗️ **Clean architecture** — routes → services → core, fully separated concerns
+- 🧪 **37 unit + integration tests** — recommendation engine, auth flows, admin operations
+- ⚡ **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
+
+---
+
+## ⚙️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI |
+| Database | PostgreSQL |
+| ORM | SQLAlchemy 2.0 |
+| Validation | Pydantic v2 |
+| Scheduler | APScheduler |
+| Testing | Pytest |
+| Frontend | Vanilla JS + Tailwind CSS |
+
+---
+
+## 📊 System Design Focus
+
+This project emphasizes:
+- **Recommendation system design** — explore vs exploit, scoring tradeoffs, diversity enforcement
+- **Backend architecture patterns** — service isolation, dependency injection, background tasks
+- **Performance and scaling tradeoffs** — why batch scoring beats per-request scoring, why pagination happens after ranking
+- **Security best practices** — OTP rate limiting, JWT storage, CORS, race condition prevention
+
+> This is not a CRUD app. Every architectural decision has a documented reason.
+
+---
+
+## Tech Stack (Detailed)
 
 | Layer | Technology |
 |---|---|
@@ -110,6 +155,8 @@ Every post gets a combined score before ranking:
 ```
 score = (0.7 × preference_score) + (0.3 × freshness_score) + 0.1
 ```
+
+> Note: this raw score is not normalized — it is later passed through Softmax in Tier 2 to convert scores into probabilities. Tier 1 uses raw scores for deterministic ranking.
 
 **preference_score** — how much the user likes this category, stored as a probability:
 ```

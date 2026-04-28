@@ -12,16 +12,16 @@ Built with focus on:
 
 ## Key Highlights
 
-- 🔐 **Secure auth** — JWT in httponly cookies + OTP verification with brute force protection
-- 🧠 **Advanced recommendation engine:**
+- **Secure auth** — JWT in httponly cookies + OTP verification with brute force protection
+- **Advanced recommendation engine:**
   - Softmax sampling (temperature=0.7) for controlled randomness
   - Time decay `exp(-t/24h)` for content freshness
   - Explore vs exploit strategy — prevents filter bubbles
   - Category diversity constraints in Tier 1
-- ⏰ **Background job processing** — batch score updates every 10 min, email off request path
-- 🏗️ **Clean architecture** — routes → services → core, fully separated concerns
-- 🧪 **37 unit + integration tests** — recommendation engine, auth flows, admin operations
-- ⚡ **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
+- **Background job processing** — batch score updates every 10 min, email off request path
+- **Clean architecture** — routes → services → core, fully separated concerns
+- **37 unit + integration tests** — recommendation engine, auth flows, admin operations
+- **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
 
 ---
 

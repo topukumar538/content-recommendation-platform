@@ -47,7 +47,7 @@ def get_feed(
     limit: int = Query(default=20, ge=1, le=100)
 ):
     feeds = feed_service.get_personalized_feed(
-        user.id,           # ← change user["user_id"] to user.id
+        user.id,           
         db, search, category_id, page, limit
     )
     return {

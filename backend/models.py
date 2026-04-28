@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
+from sqlalchemy import UniqueConstraint, Index
 
 
 class User(Base):
@@ -34,19 +35,25 @@ class Category(Base):
     feeds: Mapped[list["Feed"]] = relationship("Feed", back_populates="category")
 
 
+
+
 class Feed(Base):
     __tablename__ = "feeds"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String)
-    content: Mapped[str] = mapped_column(Text)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
-    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    category: Mapped["Category"] = relationship("Category", back_populates="feeds")
-    author: Mapped["User"] = relationship("User")
+    id          : Mapped[int]      = mapped_column(primary_key=True)
+    title       : Mapped[str]      = mapped_column(String)
+    content     : Mapped[str]      = mapped_column(Text)
+    category_id : Mapped[int]      = mapped_column(ForeignKey("categories.id"))
+    author_id   : Mapped[int]      = mapped_column(ForeignKey("users.id"))
+    created_at  : Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    category    : Mapped["Category"] = relationship("Category", back_populates="feeds")
+    author      : Mapped["User"]    = relationship("User")
+
+    __table_args__ = (
+        Index("ix_feeds_created_at_desc", "created_at"),
+    )
 
 
-from sqlalchemy import UniqueConstraint
+
 
 class UserInteraction(Base):
     __tablename__ = "user_interactions"

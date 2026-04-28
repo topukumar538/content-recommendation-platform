@@ -1,4 +1,4 @@
-# 🚀 ContentPlatform — Personalized Recommendation System
+# ContentPlatform — Personalized Recommendation System
 
 A production-style backend system that delivers a personalized content feed using a multi-tier recommendation engine.
 
@@ -10,7 +10,7 @@ Built with focus on:
 
 ---
 
-## 🧠 Key Highlights
+## Key Highlights
 
 - 🔐 **Secure auth** — JWT in httponly cookies + OTP verification with brute force protection
 - 🧠 **Advanced recommendation engine:**
@@ -25,7 +25,7 @@ Built with focus on:
 
 ---
 
-## ⚙️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -39,7 +39,7 @@ Built with focus on:
 
 ---
 
-## 📊 System Design Focus
+## System Design Focus
 
 This project emphasizes:
 - **Recommendation system design** — explore vs exploit, scoring tradeoffs, diversity enforcement

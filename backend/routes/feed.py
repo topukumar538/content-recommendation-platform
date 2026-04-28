@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from core.dependencies import get_db, get_current_user, admin_only
+from core.dependencies import get_db, get_current_user, admin_only, get_current_active_user
 from schemas.feed import FeedCreate, FeedUpdate
 from schemas.category import CategoryCreate, CategoryUpdate
 from services import feed_service
@@ -40,14 +40,15 @@ def delete_category(category_id: int, db: Session = Depends(get_db), user=Depend
 def get_feed(
     request: Request,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(get_current_active_user),
     search: Optional[str] = Query(default=None),
     category_id: Optional[int] = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100)
 ):
-    result = feed_service.get_personalized_feed(
-        user["user_id"], db, search, category_id, page, limit
+    feeds = feed_service.get_personalized_feed(
+        user.id,           # ← change user["user_id"] to user.id
+        db, search, category_id, page, limit
     )
     return {
         "items": [
@@ -60,18 +61,17 @@ def get_feed(
                 "author": f.author.username,
                 "created_at": str(f.created_at)
             }
-            for f in result["items"]
+            for f in feeds["items"]
         ],
-        "total": result["total"],
-        "page": result["page"],
-        "pages": result["pages"]
+        "total": feeds["total"],
+        "page": feeds["page"],
+        "pages": feeds["pages"]
     }
-
 @router.get("/feed/{feed_id}")
 def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed = feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "viewed", db)
+        feed_service.record_interaction(user.id, feed_id, "viewed", db)
         return {
             "id": feed.id,
             "title": feed.title,
@@ -88,7 +88,7 @@ def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db
 def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "liked", db)
+        feed_service.record_interaction(user.id, feed_id, "liked", db)
         return {"message": "Post liked"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -97,7 +97,7 @@ def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "saved", db)
+        feed_service.record_interaction(user.id, feed_id, "saved", db)
         return {"message": "Post saved"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

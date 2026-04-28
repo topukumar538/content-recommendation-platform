@@ -8,8 +8,9 @@ from schemas.user import ProfileUpdate
 
 router = APIRouter(prefix="/user", tags=["User"])
 
+
 @router.get("/saved")
-def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     interactions = db.query(UserInteraction).filter(
         UserInteraction.user_id == user["user_id"],
         UserInteraction.action == "saved"
@@ -34,7 +35,7 @@ def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_user
     ]
 
 @router.delete("/saved/{feed_id}")
-def unsave_post(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def unsave_post(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     interaction = db.query(UserInteraction).filter(
         UserInteraction.user_id == user["user_id"],
         UserInteraction.feed_id == feed_id,
@@ -47,11 +48,7 @@ def unsave_post(feed_id: int, db: Session = Depends(get_db), user=Depends(get_cu
     return {"message": "Post unsaved"}
 
 @router.post("/feedback")
-def submit_feedback(
-    data: FeedbackCreate,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user)
-):
+def submit_feedback(data: FeedbackCreate, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     try:
         return feedback_service.submit_feedback(user["user_id"], data, db)
     except ValueError as e:

@@ -29,28 +29,40 @@ def time_decay(created_at):
     return math.exp(-hours / TIME_DECAY_HOURS)
 
 
+# ============================================================
+# Recommendation Engine — Complexity Analysis
+# ============================================================
+# Input:
+#   all_feeds   → F posts (max 500, controlled by FEED_LIMIT)
+#   preferences → C category scores for this user
+#
+# Overall: O(F log F) time, O(F) space
+# ============================================================
+
 def rank_feeds(all_feeds, preferences):
     if not preferences:
+        # O(F log F) — sort by date, no preferences yet
         return sorted(all_feeds, key=lambda f: f.created_at, reverse=True)
 
+    # O(C) — build hashmap for O(1) category lookup
     pref_map = {p.category_id: p.score for p in preferences}
 
+    # O(F) — score every post once
     raw = {}
     for f in all_feeds:
-        preference = pref_map.get(f.category_id, 0)
-        freshness  = time_decay(f.created_at)
+        preference = pref_map.get(f.category_id, 0)  # O(1) hashmap lookup
+        freshness  = time_decay(f.created_at)          # O(1) math.exp()
         raw[f.id]  = (PREF_WEIGHT * preference) + (FRESH_WEIGHT * freshness) + BASE_SCORE
 
-    max_score = max(raw.values()) or 1
-    if max_score == 0:
-        return sorted(all_feeds, key=lambda f: f.created_at, reverse=True)
+    # O(F log F) — sort all posts by combined score
+    top_posts = sorted(all_feeds, key=lambda f: raw[f.id], reverse=True)
 
     result    = []
-    seen_ids  = set()
+    seen_ids  = set()        # O(1) lookup
     cat_count = defaultdict(int)
 
-    # TIER 1 — top scored with category diversity
-    top_posts = sorted(all_feeds, key=lambda f: raw[f.id], reverse=True)
+    # TIER 1 — O(F) worst case, stops at TIER1_SIZE
+    # Deterministic top scored posts with category diversity cap
     for feed in top_posts:
         if len(result) == TIER1_SIZE:
             break
@@ -60,11 +72,12 @@ def rank_feeds(all_feeds, preferences):
         seen_ids.add(feed.id)
         cat_count[feed.category_id] += 1
 
-    # TIER 2 — softmax weighted wildcard
+    # TIER 2 — O(F) to build pool, O(T2) softmax weighted sampling
+    # Probabilistic exploration — high score = more likely, not guaranteed
     remaining_pool = [f for f in all_feeds if f.id not in seen_ids]
     if remaining_pool:
         pool_scores = [raw[f.id] for f in remaining_pool]
-        weights     = softmax(pool_scores)
+        weights     = softmax(pool_scores)   # O(F) — exp() per post
         candidates  = random.choices(remaining_pool, weights=weights, k=TIER2_SIZE)
         added = 0
         for feed in candidates:
@@ -73,15 +86,17 @@ def rank_feeds(all_feeds, preferences):
                 seen_ids.add(feed.id)
                 added += 1
 
-    # epsilon greedy — true random
+    # EPSILON GREEDY — O(F) to find unseen posts
+    # 10% chance of truly random post — breaks filter bubble
     if random.random() < EPSILON:
         unseen = [f for f in all_feeds if f.id not in seen_ids]
         if unseen:
-            random_post = random.choice(unseen)
+            random_post = random.choice(unseen)  # O(1)
             result.append(random_post)
             seen_ids.add(random_post.id)
 
-    # TIER 3 — newest unseen
+    # TIER 3 — O(F log F) sort by date, O(F) iteration
+    # Newest unseen posts — ensures fresh content always discoverable
     by_date = sorted(all_feeds, key=lambda f: f.created_at, reverse=True)
     for feed in by_date:
         if feed.id not in seen_ids:

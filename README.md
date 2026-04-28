@@ -1,8 +1,8 @@
 # ContentPlatform
 
-A full-stack personalized content platform built with FastAPI and PostgreSQL. Features a multi-tier recommendation engine using Softmax sampling, time decay scoring, and epsilon-greedy exploration. Includes JWT authentication with email OTP verification and a complete admin panel.
+A full-stack personalized content platform built with FastAPI and PostgreSQL. Features a multi-tier recommendation engine using Softmax sampling, time decay scoring, and epsilon-greedy exploration. Includes JWT authentication with email OTP verification, OTP rate limiting, background task processing, and a complete admin panel with role-based access control.
 
-Built as a portfolio project to demonstrate backend engineering skills.
+Built as a portfolio project to demonstrate backend engineering skills — targeting production-grade quality.
 
 ---
 
@@ -15,9 +15,10 @@ Built as a portfolio project to demonstrate backend engineering skills.
 | ORM | SQLAlchemy 2.0 |
 | Validation | Pydantic v2 |
 | Authentication | JWT (httponly cookies) |
-| Email | Gmail SMTP (OTP delivery) |
+| Email | Gmail SMTP (OTP delivery via BackgroundTasks) |
 | Password Hashing | bcrypt + passlib |
 | Scheduler | APScheduler |
+| Testing | Pytest (unit + integration) |
 | Frontend | HTML + Vanilla JS + Tailwind CSS |
 | Server | Uvicorn |
 
@@ -29,9 +30,10 @@ Built as a portfolio project to demonstrate backend engineering skills.
 content-platform/
 ├── backend/
 │   ├── main.py                         # app entry point, CORS, routing, scheduler
-│   ├── database.py                     # SQLAlchemy engine, session, Base
+│   ├── database.py                     # SQLAlchemy engine, session, Base, connection pool
 │   ├── models.py                       # all database table definitions
 │   ├── scheduler.py                    # background score recalculation (every 10 min)
+│   ├── conftest.py                     # pytest fixtures — TestClient, SQLite test DB
 │   ├── requirements.txt
 │   ├── .env
 │   ├── core/
@@ -49,13 +51,20 @@ content-platform/
 │   │   ├── feed.py                     # /feed/* and /categories/* endpoints
 │   │   ├── admin.py                    # /admin/* endpoints
 │   │   └── user.py                     # /user/* endpoints
-│   └── services/
-│       ├── auth_service.py             # signup, login, OTP, password logic
-│       ├── otp_service.py              # OTP generation, email sending, verification
-│       ├── feed_service.py             # feed, categories, interactions
-│       ├── recommendation_service.py   # full recommendation algorithm
-│       ├── feedback_service.py         # feedback CRUD
-│       └── admin_service.py            # user management, stats
+│   ├── services/
+│   │   ├── auth_service.py             # signup, login, OTP, password logic
+│   │   ├── otp_service.py              # OTP generation, email sending, verification
+│   │   ├── feed_service.py             # feed, categories, interactions, pagination
+│   │   ├── recommendation_service.py   # full recommendation algorithm with complexity comments
+│   │   ├── feedback_service.py         # feedback CRUD
+│   │   └── admin_service.py            # user management, stats
+│   └── tests/
+│       ├── unit/
+│       │   ├── test_recommendation.py  # softmax, time decay, tier logic, edge cases
+│       │   └── test_auth.py            # login, signup, OTP, password validation
+│       └── integration/
+│           ├── test_feed.py            # signup → login → feed → like cycle
+│           └── test_admin.py           # admin block → user denied flow
 └── frontend/
     ├── index.html                      # landing page with smart redirect
     ├── signup.html
@@ -63,7 +72,7 @@ content-platform/
     ├── login.html
     ├── forgot-password.html
     ├── reset-password.html
-    ├── feed.html                       # personalized feed + search + category filter
+    ├── feed.html                       # personalized feed + search + category filter + pagination
     ├── feed-detail.html                # post detail + like + save + related posts
     ├── saved.html                      # saved posts with unsave option
     ├── profile.html                    # update username + change password via OTP
@@ -80,13 +89,15 @@ content-platform/
 ### Authentication
 - Signup with email OTP verification
 - Resend OTP with 60 second cooldown timer
+- OTP brute force protection — locked after 5 wrong attempts with countdown
 - Unverified user re-signup resends OTP instead of showing error
 - JWT stored in httponly cookie (protected from XSS)
 - Configurable token expiry via `.env`
 - Forgot password via email OTP
 - Change password from profile (requires OTP verification)
 - Role based access control — `user` and `admin`
-- Blocked user detection on every authenticated request
+- Blocked user detection on every authenticated request — denied instantly
+- Email sending via FastAPI BackgroundTasks — never blocks the request path
 
 ### Recommendation Engine
 
@@ -115,10 +126,12 @@ Science score    = 5  / 15 = 0.33
 ```
 freshness = exp(-hours_since_posted / 24)
 
-post from 1 hour ago  → exp(-1/24)  = 0.96  (very fresh)
-post from 24 hours ago → exp(-1)    = 0.37  (moderately fresh)
-post from 72 hours ago → exp(-3)    = 0.05  (mostly stale)
+post from 1 hour ago   → exp(-1/24)  = 0.96  (very fresh)
+post from 24 hours ago → exp(-1)     = 0.37  (moderately fresh)
+post from 72 hours ago → exp(-3)     = 0.05  (mostly stale)
 ```
+
+Exponential decay is asymptotic — posts never completely die, they just approach zero. This mirrors how real content platforms treat recency. Linear decay would hard-expire posts at an arbitrary cutoff.
 
 **0.1 base score** — prevents any post from having zero probability, ensuring no content is completely dead.
 
@@ -161,17 +174,17 @@ This is the same mechanism used in ChatGPT's temperature slider — higher tempe
 #### 3-Tier Feed Algorithm
 
 ```
-TIER 1 (slots 1–15)   → deterministic exploit
+TIER 1 (slots 1–15)   → deterministic exploit          O(F log F)
                          top 15 posts by combined score
                          max 3 posts per category enforced
                          ensures diversity, prevents one topic dominating
 
-TIER 2 (slots 16–20)  → softmax weighted exploration
+TIER 2 (slots 16–20)  → softmax weighted exploration   O(F)
                          5 posts selected by weighted random sampling
                          high score = more likely, not guaranteed
                          gives variety — posts user might not have seen
 
-TIER 3 (slots 21+)    → newest unseen posts
+TIER 3 (slots 21+)    → newest unseen posts             O(F log F)
                          all remaining posts ordered by date
                          ensures fresh content is always discoverable
 
@@ -184,6 +197,8 @@ EPSILON               → 10% chance of one truly random post
 - Pure exploitation (always show highest scored) creates a filter bubble — users only see what they already like
 - Pure exploration (always random) makes personalization useless
 - This 3-tier structure balances both — users see relevant content first, discover new content second, and always have access to fresh posts
+
+**Overall complexity: O(F log F) time, O(F) space** where F = number of posts fetched (max 500)
 
 ---
 
@@ -206,10 +221,12 @@ Scheduled recalculation scales better than instant updates — one batch job for
 
 ### Feed
 - Personalized order based on recommendation algorithm
+- Paginated API — `GET /feed?page=1&limit=20` returns `{ items, total, page, pages }`
 - Search by title or content (case insensitive)
 - Filter by category
 - Related posts on detail page (same category, excluding current)
 - Like and save with instant visual feedback
+- Frontend pagination controls with Previous / Next navigation
 
 ### User Features
 - Saved posts collection with unsave option
@@ -227,6 +244,48 @@ Scheduled recalculation scales better than instant updates — one batch job for
 
 ---
 
+## Security
+
+- **OTP rate limiting** — locked after 5 wrong attempts, countdown shown to user, force resend
+- **JWT in httponly cookie** — protected from XSS, `samesite=lax` prevents CSRF
+- **Blocked user enforcement** — every authenticated route uses `get_current_active_user`, blocked users denied instantly on next request
+- **DB-level unique constraint** on `(user_id, feed_id, action)` — prevents race condition on duplicate interactions
+- **CORS restricted** — `ALLOWED_ORIGINS` configured via environment variable, no wildcard in production
+- **Explicit transaction control** — `autocommit=False`, changes only persist on `db.commit()`
+
+---
+
+## Performance
+
+- **Connection pooling** — `pool_size=10`, `max_overflow=20`, `pool_timeout=30`, `pool_recycle=1800`
+- **N+1 prevention** — all feed queries use SQLAlchemy `joinedload` for single SQL JOIN
+- **DB index on `feeds(created_at DESC)`** — faster feed fetching and Tier 3 date ordering
+- **Hashmap for category lookups** — `pref_map = {category_id: score}` gives O(1) lookup per post
+- **Pagination** — max 20 posts per response, ranking happens on full pool then sliced
+- **Background email** — OTP sending via `BackgroundTasks`, response never waits for Gmail
+
+---
+
+## Tests
+
+37 tests across unit and integration:
+
+```bash
+pytest tests/ -v
+```
+
+**Unit tests — `tests/unit/`**
+- `test_recommendation.py` — softmax sums to 1.0, time decay never zero, tier diversity, no duplicates, preferred category ranks higher
+- `test_auth.py` — login failure cases, signup validation, password mismatch, blocked user
+
+**Integration tests — `tests/integration/`**
+- `test_feed.py` — signup → login → feed → auth cycle, pagination shape, duplicate signup
+- `test_admin.py` — admin block → user denied, unblock → access restored, non-admin rejected from admin routes
+
+All integration tests use SQLite in-memory DB — no real PostgreSQL needed to run tests.
+
+---
+
 ## Database Schema
 
 ```
@@ -234,16 +293,18 @@ users
   id, username, email, password, role, is_active, is_blocked, created_at
 
 otp_codes
-  id, email, code, purpose, is_used, created_at
+  id, email, code, purpose, is_used, attempts, created_at
 
 categories
   id, name
 
 feeds
   id, title, content, category_id (FK), author_id (FK), created_at
+  indexes: ix_feeds_created_at_desc
 
 user_interactions
   id, user_id (FK), feed_id (FK), action, created_at
+  unique: (user_id, feed_id, action)
 
 category_preferences
   id, user_id (FK), category_id (FK), score, updated_at
@@ -259,8 +320,8 @@ feedbacks
 ### Auth — `/auth`
 ```
 POST /signup                       register new account
-POST /verify-otp                   verify email OTP
-POST /resend-otp                   resend OTP
+POST /verify-otp                   verify email OTP (max 5 attempts)
+POST /resend-otp                   resend OTP (60s cooldown on frontend)
 POST /login                        login, sets httponly cookie
 POST /logout                       clears cookie
 POST /forgot-password              send reset OTP to email
@@ -272,7 +333,7 @@ GET  /me                           get current user info
 
 ### Feed — `/feed`
 ```
-GET    /feed                       personalized feed (?search= &category_id=)
+GET    /feed                       personalized feed (?search= &category_id= &page= &limit=)
 GET    /feed/{id}                  post detail, records view interaction
 POST   /feed/{id}/like             like post
 POST   /feed/{id}/save             save post
@@ -347,22 +408,33 @@ LOGIN_EXPIRE_TIME=7
 OTP_EXPIRE_MIN=10
 GMAIL_USER=yourgmail@gmail.com
 GMAIL_PASSWORD=your-gmail-app-password
+ALLOWED_ORIGINS=http://localhost:8000
 ```
 
 > **Gmail App Password:** Google Account → Security → 2-Step Verification → App Passwords → create one for "ContentPlatform"
 
-### 6. Run the server
+### 6. Apply database indexes
+```bash
+sudo -u postgres psql -d contentplatform
+```
+```sql
+CREATE INDEX ix_feeds_created_at_desc ON feeds (created_at DESC);
+ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;
+ALTER TABLE user_interactions ADD CONSTRAINT uq_user_feed_action UNIQUE (user_id, feed_id, action);
+```
+
+### 7. Run the server
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-### 7. Access the app
+### 8. Access the app
 ```
 App        →  http://localhost:8000/
 API docs   →  http://localhost:8000/docs
 ```
 
-### 8. Create admin account
+### 9. Create admin account
 
 First sign up normally, then run:
 ```bash
@@ -374,13 +446,19 @@ UPDATE users SET role = 'admin' WHERE email = 'youremail@gmail.com';
 ```
 Logout and login again to get a new token with admin role.
 
-### 9. Seed test data (optional)
+### 10. Seed test data (optional)
 
 Creates 5 categories and 100 posts for testing:
 ```bash
 python seed.py
 ```
 Update the email and password at the top of `seed.py` before running.
+
+### 11. Run tests
+```bash
+pytest tests/ -v
+```
+No PostgreSQL needed — integration tests use SQLite in-memory.
 
 ---
 
@@ -412,6 +490,21 @@ Explicit transaction control means changes only persist when `db.commit()` is ca
 
 **N+1 prevention with joinedload**
 All feed queries use SQLAlchemy `joinedload` to fetch related category and author data in a single SQL JOIN. Without this, accessing `feed.category.name` for 100 posts would fire 200 extra database queries.
+
+**OTP rate limiting**
+After 5 wrong attempts the OTP is locked and the user must request a new one. With a 6-digit OTP (999,999 combinations) and a 60-second resend cooldown, brute force becomes practically impossible — an attacker would need 200,000 resend requests to exhaust all combinations.
+
+**Background email sending**
+OTP emails are sent via FastAPI `BackgroundTasks` — the response is returned immediately and email is sent after. If Gmail is slow or down, the user experience is unaffected. Previously, a slow Gmail response would block the entire signup request.
+
+**DB-level unique constraint on interactions**
+App-level deduplication alone has a race condition — two simultaneous requests can both pass the check before either commits. The database-level unique constraint on `(user_id, feed_id, action)` guarantees correctness regardless of concurrency.
+
+**Connection pool configuration**
+Explicit `pool_size=10`, `max_overflow=20`, `pool_recycle=1800` prevents connection exhaustion under concurrent load and ensures stale connections are recycled every 30 minutes.
+
+**Pagination after ranking**
+Pagination happens after the recommendation algorithm ranks all posts — not at the DB query level. The algorithm needs the full pool to make meaningful ranking decisions. Slicing before ranking would return good posts for that page but poor overall personalization.
 
 ---
 
@@ -446,3 +539,4 @@ All algorithm parameters are defined as named constants in `recommendation_servi
 | `OTP_EXPIRE_MIN` | OTP validity window in minutes | `10` |
 | `GMAIL_USER` | Gmail address for sending OTPs | `yourapp@gmail.com` |
 | `GMAIL_PASSWORD` | Gmail App Password | 16-character app password |
+| `ALLOWED_ORIGINS` | Allowed CORS origin | `http://localhost:8000` |

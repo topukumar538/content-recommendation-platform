@@ -71,7 +71,7 @@ def get_feed(
 def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed = feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user.id, feed_id, "viewed", db)
+        feed_service.record_interaction(user["user_id"], feed_id, "viewed", db)  # ← was user.id
         return {
             "id": feed.id,
             "title": feed.title,
@@ -88,7 +88,7 @@ def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db
 def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user.id, feed_id, "liked", db)
+        feed_service.record_interaction(user["user_id"], feed_id, "liked", db)  # ← was user.id
         return {"message": "Post liked"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -97,7 +97,7 @@ def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user.id, feed_id, "saved", db)
+        feed_service.record_interaction(user["user_id"], feed_id, "saved", db)  # ← was user.id
         return {"message": "Post saved"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

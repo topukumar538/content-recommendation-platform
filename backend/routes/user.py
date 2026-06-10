@@ -12,7 +12,7 @@ router = APIRouter(prefix="/user", tags=["User"])
 @router.get("/saved")
 def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     interactions = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user["user_id"],
+        UserInteraction.user_id == user.id,  # ← was user["user_id"]
         UserInteraction.action == "saved"
     ).all()
     feed_ids = [i.feed_id for i in interactions]
@@ -37,7 +37,7 @@ def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_acti
 @router.delete("/saved/{feed_id}")
 def unsave_post(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     interaction = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user["user_id"],
+        UserInteraction.user_id == user.id,  # ← was user["user_id"]
         UserInteraction.feed_id == feed_id,
         UserInteraction.action == "saved"
     ).first()

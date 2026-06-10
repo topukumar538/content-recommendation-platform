@@ -77,10 +77,8 @@
         async function loadRelated(categoryId, currentId) {
             const res = await fetch(`/feed?category_id=${categoryId}`, { credentials: "include" })
             if (!res.ok) return
-            const posts = await res.json()
-
-            // filter out current post and take max 3
-            const related = posts.filter(p => p.id !== currentId).slice(0, 3)
+            const data = await res.json()
+            const related = data.items.filter(p => p.id !== currentId).slice(0, 3)
             const container = document.getElementById("related-list")
 
             if (related.length === 0) {

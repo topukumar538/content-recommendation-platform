@@ -216,7 +216,8 @@
 
         async function loadPosts() {
             const res = await fetch("/feed", { credentials: "include" })
-            const posts = await res.json()
+            const data = await res.json()
+            const posts = data.items
             document.getElementById("post-list").innerHTML = posts.length === 0
                 ? `<p class="text-gray-400 text-sm">No posts yet.</p>`
                 : posts.map(p => `
@@ -228,7 +229,7 @@
                         <button onclick="deletePost(${p.id})" class="btn-red">Delete</button>
                     </li>
                 `).join("")
-        }
+}
 
         async function createCategory() {
             const name = document.getElementById("category-name").value.trim()

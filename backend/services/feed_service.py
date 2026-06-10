@@ -136,3 +136,19 @@ def record_interaction(user_id: int, feed_id: int, action: str, db: Session):
         db.commit()
     except IntegrityError:
         db.rollback()  # duplicate — silently ignore
+
+def toggle_interaction(user_id: int, feed_id: int, action: str, db: Session):
+    existing = db.query(UserInteraction).filter(
+        UserInteraction.user_id == user_id,
+        UserInteraction.feed_id == feed_id,
+        UserInteraction.action == action
+    ).first()
+
+    if existing:
+        db.delete(existing)
+        db.commit()
+        return {"action": "removed", "status": False}
+    else:
+        db.add(UserInteraction(user_id=user_id, feed_id=feed_id, action=action))
+        db.commit()
+        return {"action": "added", "status": True}

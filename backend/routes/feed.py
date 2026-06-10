@@ -4,6 +4,7 @@ from core.dependencies import get_db, get_current_user, admin_only, get_current_
 from schemas.feed import FeedCreate, FeedUpdate
 from schemas.category import CategoryCreate, CategoryUpdate
 from services import feed_service
+from models import UserInteraction
 from typing import Optional
 
 router = APIRouter(tags=["Feed"])
@@ -47,7 +48,7 @@ def get_feed(
     limit: int = Query(default=20, ge=1, le=100)
 ):
     feeds = feed_service.get_personalized_feed(
-        user.id,           
+        user.id,
         db, search, category_id, page, limit
     )
     return {
@@ -67,11 +68,29 @@ def get_feed(
         "page": feeds["page"],
         "pages": feeds["pages"]
     }
+
+@router.get("/feed/{feed_id}/interactions")
+def get_interactions(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    liked = db.query(UserInteraction).filter(
+        UserInteraction.user_id == user["user_id"],
+        UserInteraction.feed_id == feed_id,
+        UserInteraction.action == "liked"
+    ).first()
+    saved = db.query(UserInteraction).filter(
+        UserInteraction.user_id == user["user_id"],
+        UserInteraction.feed_id == feed_id,
+        UserInteraction.action == "saved"
+    ).first()
+    return {
+        "liked": liked is not None,
+        "saved": saved is not None
+    }
+
 @router.get("/feed/{feed_id}")
 def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed = feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "viewed", db)  # ← was user.id
+        feed_service.record_interaction(user["user_id"], feed_id, "viewed", db)
         return {
             "id": feed.id,
             "title": feed.title,
@@ -88,8 +107,8 @@ def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db
 def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "liked", db)  # ← was user.id
-        return {"message": "Post liked"}
+        result = feed_service.toggle_interaction(user["user_id"], feed_id, "liked", db)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -97,8 +116,8 @@ def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "saved", db)  # ← was user.id
-        return {"message": "Post saved"}
+        result = feed_service.toggle_interaction(user["user_id"], feed_id, "saved", db)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

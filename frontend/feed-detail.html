@@ -55,78 +55,119 @@
     </div>
 
     <script>
-        const params = new URLSearchParams(window.location.search)
-        const feedId = parseInt(params.get("id"))
-        if (!feedId) window.location.href = "/app/feed.html"
+    const params = new URLSearchParams(window.location.search)
+    const feedId = parseInt(params.get("id"))
+    if (!feedId) window.location.href = "/app/feed.html"
 
-        async function loadPost() {
-            const res = await fetch(`/feed/${feedId}`, { credentials: "include" })
-            if (res.status === 401) return window.location.href = "/app/login.html"
-            if (!res.ok) return window.location.href = "/app/feed.html"
-            const feed = await res.json()
+    let isLiked = false
+    let isSaved = false
 
-            document.getElementById("category").textContent = feed.category
-            document.getElementById("title").textContent = feed.title
-            document.getElementById("author").textContent = `By ${feed.author}`
-            document.getElementById("content").textContent = feed.content
+    async function loadPost() {
+        const res = await fetch(`/feed/${feedId}`, { credentials: "include" })
+        if (res.status === 401) return window.location.href = "/app/login.html"
+        if (!res.ok) return window.location.href = "/app/feed.html"
+        const feed = await res.json()
 
-            // load related after we have category_id
+        document.getElementById("category").textContent = feed.category
+        document.getElementById("title").textContent = feed.title
+        document.getElementById("author").textContent = `By ${feed.author}`
+        document.getElementById("content").textContent = feed.content
+
+        await Promise.all([
+            loadInteractions(),
             loadRelated(feed.category_id, feed.id)
+        ])
+    }
+
+    async function loadInteractions() {
+        const res = await fetch(`/feed/${feedId}/interactions`, { credentials: "include" })
+        if (!res.ok) return
+        const data = await res.json()
+
+        isLiked = data.liked
+        isSaved = data.saved
+
+        const likeBtn = document.getElementById("like-btn")
+        const saveBtn = document.getElementById("save-btn")
+
+        if (isLiked) likeBtn.classList.add("active")
+        else likeBtn.classList.remove("active")
+
+        if (isSaved) saveBtn.classList.add("active")
+        else saveBtn.classList.remove("active")
+    }
+
+    async function loadRelated(categoryId, currentId) {
+        const res = await fetch(`/feed?category_id=${categoryId}`, { credentials: "include" })
+        if (!res.ok) return
+        const data = await res.json()
+        const related = data.items.filter(p => p.id !== currentId).slice(0, 3)
+        const container = document.getElementById("related-list")
+
+        if (related.length === 0) {
+            container.innerHTML = `<p class="text-gray-400 text-sm">No related posts.</p>`
+            return
         }
 
-        async function loadRelated(categoryId, currentId) {
-            const res = await fetch(`/feed?category_id=${categoryId}`, { credentials: "include" })
-            if (!res.ok) return
-            const data = await res.json()
-            const related = data.items.filter(p => p.id !== currentId).slice(0, 3)
-            const container = document.getElementById("related-list")
-
-            if (related.length === 0) {
-                container.innerHTML = `<p class="text-gray-400 text-sm">No related posts.</p>`
-                return
-            }
-
-            container.innerHTML = related.map(p => `
-                <div onclick="window.location.href='/app/feed-detail.html?id=${p.id}'"
-                    class="flex justify-between items-center py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 rounded-lg px-2 transition">
-                    <div>
-                        <p class="text-gray-700 text-sm font-medium">${p.title}</p>
-                        <p class="text-gray-400 text-xs mt-0.5">By ${p.author}</p>
-                    </div>
-                    <span class="text-blue-400 text-sm">→</span>
+        container.innerHTML = related.map(p => `
+            <div onclick="window.location.href='/app/feed-detail.html?id=${p.id}'"
+                class="flex justify-between items-center py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 rounded-lg px-2 transition">
+                <div>
+                    <p class="text-gray-700 text-sm font-medium">${p.title}</p>
+                    <p class="text-gray-400 text-xs mt-0.5">By ${p.author}</p>
                 </div>
-            `).join("")
-        }
+                <span class="text-blue-400 text-sm">→</span>
+            </div>
+        `).join("")
+    }
 
-        async function like() {
-            const res = await fetch(`/feed/${feedId}/like`, { method: "POST", credentials: "include" })
-            if (res.ok) {
-                document.getElementById("like-btn").classList.add("active")
-                showMessage("Liked! ❤️")
-            }
-        }
+    async function like() {
+        const res = await fetch(`/feed/${feedId}/like`, { method: "POST", credentials: "include" })
+        if (!res.ok) return
+        const data = await res.json()
 
-        async function save() {
-            const res = await fetch(`/feed/${feedId}/save`, { method: "POST", credentials: "include" })
-            if (res.ok) {
-                document.getElementById("save-btn").classList.add("active")
-                showMessage("Saved! 🔖")
-            }
-        }
+        isLiked = data.status
+        const likeBtn = document.getElementById("like-btn")
 
-        function showMessage(msg) {
-            const el = document.getElementById("message")
-            el.textContent = msg
-            el.classList.remove("hidden")
-            setTimeout(() => el.classList.add("hidden"), 2000)
+        if (isLiked) {
+            likeBtn.classList.add("active")
+            showMessage("Liked! ❤️")
+        } else {
+            likeBtn.classList.remove("active")
+            showMessage("Unliked")
         }
+    }
 
-        async function logout() {
-            await fetch("/auth/logout", { method: "POST", credentials: "include" })
-            window.location.href = "/app/index.html"
+    async function save() {
+        const res = await fetch(`/feed/${feedId}/save`, { method: "POST", credentials: "include" })
+        if (!res.ok) return
+        const data = await res.json()
+
+        isSaved = data.status
+        const saveBtn = document.getElementById("save-btn")
+
+        if (isSaved) {
+            saveBtn.classList.add("active")
+            showMessage("Saved! 🔖")
+        } else {
+            saveBtn.classList.remove("active")
+            showMessage("Removed from saved")
         }
+    }
 
-        loadPost()
-    </script>
+    function showMessage(msg) {
+        const el = document.getElementById("message")
+        el.textContent = msg
+        el.classList.remove("hidden")
+        setTimeout(() => el.classList.add("hidden"), 2000)
+    }
+
+    async function logout() {
+        await fetch("/auth/logout", { method: "POST", credentials: "include" })
+        window.location.href = "/app/index.html"
+    }
+
+    loadPost()
+</script>
 </body>
 </html>

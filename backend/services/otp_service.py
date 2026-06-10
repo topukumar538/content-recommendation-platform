@@ -1,4 +1,4 @@
-import random
+import secrets
 import string
 import smtplib
 from email.mime.text import MIMEText
@@ -9,7 +9,7 @@ from models import OTPCode
 from core.config import settings
 
 def generate_otp() -> str:
-    return ''.join(random.choices(string.digits, k=6))
+    return ''.join(secrets.choice(string.digits) for _ in range(6))
 
 def send_otp_email(email: str, code: str, purpose: str):
     subject = "Your OTP Code — ContentPlatform"

@@ -12,7 +12,7 @@ router = APIRouter(prefix="/user", tags=["User"])
 @router.get("/saved")
 def get_saved_posts(db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     interactions = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user.id,  # ← was user["user_id"]
+        UserInteraction.user_id == user.id,  
         UserInteraction.action == "saved"
     ).all()
     feed_ids = [i.feed_id for i in interactions]
@@ -50,7 +50,7 @@ def unsave_post(feed_id: int, db: Session = Depends(get_db), user=Depends(get_cu
 @router.post("/feedback")
 def submit_feedback(data: FeedbackCreate, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     try:
-        return feedback_service.submit_feedback(user["user_id"], data, db)
+        return feedback_service.submit_feedback(user.id, data, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

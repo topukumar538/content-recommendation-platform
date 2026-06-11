@@ -6,9 +6,10 @@ services:
     image: postgres:16
     container_name: contentplatform_db
     restart: always
+    env_file:
+      - backend/.env
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: contentplatform
     volumes:
       - postgres_data:/var/lib/postgresql/data

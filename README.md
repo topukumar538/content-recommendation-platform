@@ -20,7 +20,7 @@ Built with focus on:
   - Category diversity constraints in Tier 1
 - **Background job processing** — batch score updates every 10 min, email off request path
 - **Clean architecture** — routes → services → core, fully separated concerns
-- **37 unit + integration tests** — recommendation engine, auth flows, admin operations
+- **42 unit + integration tests** — recommendation engine, auth flows, admin operations, user flows
 - **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
 
 ---
@@ -73,6 +73,9 @@ This project emphasizes:
 
 ```
 content-platform/
+├── Dockerfile
+├── docker-compose.yml
+├── env.example
 ├── backend/
 │   ├── main.py                         # app entry point, CORS, routing, scheduler
 │   ├── database.py                     # SQLAlchemy engine, session, Base, connection pool
@@ -108,8 +111,9 @@ content-platform/
 │       │   ├── test_recommendation.py  # softmax, time decay, tier logic, edge cases
 │       │   └── test_auth.py            # login, signup, OTP, password validation
 │       └── integration/
-│           ├── test_feed.py            # signup → login → feed → like cycle
-│           └── test_admin.py           # admin block → user denied flow
+│           ├── test_feed.py            # signup → login → feed → auth cycle, pagination shape, duplicate signup
+│           ├── test_admin.py           # admin block → user denied, unblock → access restored, non-admin rejected
+│           └── test_user.py            # profile update, feedback submission, full save → unsave flow
 └── frontend/
     ├── index.html                      # landing page with smart redirect
     ├── signup.html
@@ -272,7 +276,7 @@ Scheduled recalculation scales better than instant updates — one batch job for
 - Search by title or content (case insensitive)
 - Filter by category
 - Related posts on detail page (same category, excluding current)
-- Like and save with instant visual feedback
+- Like and save with toggle — click to like, click again to unlike. State persists on reload
 - Frontend pagination controls with Previous / Next navigation
 
 ### User Features
@@ -283,7 +287,6 @@ Scheduled recalculation scales better than instant updates — one batch job for
 
 ### Admin Panel
 - Dashboard stats — total users, posts, interactions, feedback
-- Most liked and most saved post tracking
 - Category management — create and delete
 - Post management — create and delete
 - User management — view all users, block/unblock, delete
@@ -315,7 +318,7 @@ Scheduled recalculation scales better than instant updates — one batch job for
 
 ## Tests
 
-37 tests across unit and integration:
+42 tests across unit and integration:
 
 ```bash
 pytest tests/ -v
@@ -328,6 +331,7 @@ pytest tests/ -v
 **Integration tests — `tests/integration/`**
 - `test_feed.py` — signup → login → feed → auth cycle, pagination shape, duplicate signup
 - `test_admin.py` — admin block → user denied, unblock → access restored, non-admin rejected from admin routes
+- `test_user.py` — profile update, feedback submission, full save → unsave flow
 
 All integration tests use SQLite in-memory DB — no real PostgreSQL needed to run tests.
 
@@ -382,8 +386,9 @@ GET  /me                           get current user info
 ```
 GET    /feed                       personalized feed (?search= &category_id= &page= &limit=)
 GET    /feed/{id}                  post detail, records view interaction
-POST   /feed/{id}/like             like post
-POST   /feed/{id}/save             save post
+GET    /feed/{id}/interactions     get like/save state for a post
+POST   /feed/{id}/like             toggle like — adds if not liked, removes if liked
+POST   /feed/{id}/save             toggle save — adds if not saved, removes if saved
 POST   /feed                       create post (admin only)
 PUT    /feed/{id}                  update post (admin only)
 DELETE /feed/{id}                  delete post (admin only)
@@ -420,92 +425,147 @@ DELETE /admin/feedback/{id}        delete feedback
 
 ## Setup
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/topukumar538/content-recommendation-platform.git
-cd content-recommendation-platform
-```
+### Option 1 — Docker (recommended, one command)
 
-### 2. Create virtual environment
-```bash
-python -m venv venv
-source venv/bin/activate
-```
+1. Clone the repository
+   ```bash
+   git clone https://github.com/topukumar538/content-recommendation-platform.git
+   cd content-recommendation-platform
+   ```
 
-### 3. Install dependencies
-```bash
-cd backend
-pip install -r requirements.txt
-```
+2. Create your `.env` file inside `backend/`:
+   ```bash
+   cp env.example backend/.env
+   ```
 
-### 4. Create PostgreSQL database
-```bash
-sudo -u postgres psql
-CREATE DATABASE contentplatform;
-\q
-```
+3. Fill in your real values in `backend/.env`:
+   ```env
+   DATABASE_URL=postgresql://postgres:yourpassword@db:5432/contentplatform
+   SECRET_KEY=any-long-random-string
+   ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_DAYS=7
+   LOGIN_EXPIRE_TIME=7
+   OTP_EXPIRE_MIN=10
+   GMAIL_USER=yourgmail@gmail.com
+   GMAIL_PASSWORD=your-gmail-app-password
+   ALLOWED_ORIGINS=http://localhost:8000
+   POSTGRES_PASSWORD=yourpassword
+   ```
+   > `POSTGRES_PASSWORD` and the password in `DATABASE_URL` must match.
+   > Gmail App Password: Google Account → Security → 2-Step Verification → App Passwords
 
-### 5. Create `.env` file inside `backend/`
-```env
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/contentplatform
-SECRET_KEY=your-super-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_DAYS=7
-LOGIN_EXPIRE_TIME=7
-OTP_EXPIRE_MIN=10
-GMAIL_USER=yourgmail@gmail.com
-GMAIL_PASSWORD=your-gmail-app-password
-ALLOWED_ORIGINS=http://localhost:8000
-```
+4. Run:
+   ```bash
+   docker compose up --build
+   ```
 
-> **Gmail App Password:** Google Account → Security → 2-Step Verification → App Passwords → create one for "ContentPlatform"
+5. Access the app at `http://localhost:8000`
 
-### 6. Apply database indexes
-```bash
-sudo -u postgres psql -d contentplatform
-```
-```sql
-CREATE INDEX ix_feeds_created_at_desc ON feeds (created_at DESC);
-ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;
-ALTER TABLE user_interactions ADD CONSTRAINT uq_user_feed_action UNIQUE (user_id, feed_id, action);
-```
+6. Create admin account — open a new terminal:
+   ```bash
+   docker exec -it contentplatform_db psql -U postgres -d contentplatform
+   ```
+   ```sql
+   UPDATE users SET role = 'admin' WHERE email = 'youremail@gmail.com';
+   \q
+   ```
+   Logout and login again to get a new token with admin role.
 
-### 7. Run the server
-```bash
-uvicorn main:app --reload --port 8000
-```
+7. Seed test data (optional) — 5 categories and 100 posts:
+   ```bash
+   cd backend
+   python seed.py
+   ```
 
-### 8. Access the app
-```
-App        →  http://localhost:8000/
-API docs   →  http://localhost:8000/docs
-```
+8. Run tests:
+   ```bash
+   cd backend
+   pytest tests/ -v
+   ```
 
-### 9. Create admin account
+9. Stop the app:
+   ```bash
+   docker compose down        # stop containers
+   docker compose down -v     # stop and delete database data
+   ```
 
-First sign up normally, then run:
-```bash
-sudo -u postgres psql -d contentplatform
-```
-```sql
-UPDATE users SET role = 'admin' WHERE email = 'youremail@gmail.com';
-\q
-```
-Logout and login again to get a new token with admin role.
+---
 
-### 10. Seed test data (optional)
+### Option 2 — Manual setup (without Docker)
 
-Creates 5 categories and 100 posts for testing:
-```bash
-python seed.py
-```
-Update the email and password at the top of `seed.py` before running.
+1. Clone the repository
+   ```bash
+   git clone https://github.com/topukumar538/content-recommendation-platform.git
+   cd content-recommendation-platform
+   ```
 
-### 11. Run tests
-```bash
-pytest tests/ -v
-```
-No PostgreSQL needed — integration tests use SQLite in-memory.
+2. Create virtual environment
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+3. Install dependencies
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   ```
+
+4. Create PostgreSQL database
+   ```bash
+   sudo -u postgres psql
+   CREATE DATABASE contentplatform;
+   \q
+   ```
+
+5. Create `backend/.env`:
+   ```env
+   DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/contentplatform
+   SECRET_KEY=any-long-random-string
+   ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_DAYS=7
+   LOGIN_EXPIRE_TIME=7
+   OTP_EXPIRE_MIN=10
+   GMAIL_USER=yourgmail@gmail.com
+   GMAIL_PASSWORD=your-gmail-app-password
+   ALLOWED_ORIGINS=http://localhost:8000
+   ```
+
+6. Apply database indexes
+   ```bash
+   sudo -u postgres psql -d contentplatform
+   ```
+   ```sql
+   CREATE INDEX ix_feeds_created_at_desc ON feeds (created_at DESC);
+   ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;
+   ALTER TABLE user_interactions ADD CONSTRAINT uq_user_feed_action UNIQUE (user_id, feed_id, action);
+   ```
+
+7. Run the server
+   ```bash
+   uvicorn main:app --reload --port 8000
+   ```
+
+8. Access the app at `http://localhost:8000`
+
+9. Create admin account
+   ```bash
+   sudo -u postgres psql -d contentplatform
+   ```
+   ```sql
+   UPDATE users SET role = 'admin' WHERE email = 'youremail@gmail.com';
+   \q
+   ```
+
+10. Seed test data (optional)
+    ```bash
+    python seed.py
+    ```
+
+11. Run tests
+    ```bash
+    pytest tests/ -v
+    ```
 
 ---
 
@@ -528,6 +588,9 @@ Linear decay (subtract a fixed amount per hour) would make old posts score zero 
 
 **Category diversity enforcement in Tier 1**
 Without the max-3-per-category limit, Tier 1 could be dominated by 15 posts from a single category the user heavily interacted with. The limit ensures users always see variety in their top results even when they have a strong preference for one topic.
+
+**Like/Save as toggle with DB cleanup**
+When a user unlikes a post the interaction row is deleted from the database — not just flagged. This keeps the interactions table clean and ensures the recommendation engine only scores genuine current preferences, not historical ones the user has reversed.
 
 **is_active vs is_blocked separation**
 `is_active` tracks whether a user has verified their email. `is_blocked` tracks whether an admin has restricted access. Keeping them separate allows independent control — an unverified user is not the same as a blocked one.
@@ -587,3 +650,105 @@ All algorithm parameters are defined as named constants in `recommendation_servi
 | `GMAIL_USER` | Gmail address for sending OTPs | `yourapp@gmail.com` |
 | `GMAIL_PASSWORD` | Gmail App Password | 16-character app password |
 | `ALLOWED_ORIGINS` | Allowed CORS origin | `http://localhost:8000` |
+| `POSTGRES_PASSWORD` | PostgreSQL password for Docker | same as password in DATABASE_URL |
+
+---
+
+## How This Scales to 1M Users
+
+Current architecture handles hundreds of users comfortably.
+Here's what breaks at scale and how to fix each one.
+
+---
+
+### 1. Database — Single PostgreSQL becomes a bottleneck
+
+**Problem:** Every feed request, interaction, and score update hits one DB instance.
+
+**Solution:**
+- **Read replicas** — route all SELECT queries (feed, interactions) to replicas, keep writes on primary
+- **Partitioning** — partition `user_interactions` by `user_id` range. At 1M users with 50 interactions each = 50M rows. Partitioning keeps queries fast without full table scans
+- **Connection pooling with PgBouncer** — 1M users can't each hold a SQLAlchemy connection. PgBouncer sits in front of Postgres and multiplexes thousands of app connections into a small pool
+
+---
+
+### 2. Recommendation Engine — Scoring 500 posts per request per user
+
+**Problem:** Current design fetches up to 500 posts and ranks them on every feed request. At 1M concurrent users that's 500M post objects in memory.
+
+**Solution:**
+- **Pre-compute feeds** — instead of ranking at request time, run the recommendation algorithm in the background scheduler and store each user's ranked feed in Redis. Feed request becomes a simple cache read
+- **Redis sorted sets** — store `user:{id}:feed` as a Redis sorted set with post IDs scored by rank. Feed request = `ZRANGE` in O(log N)
+- Trade-off: feed is slightly stale (up to 10 min) vs perfectly fresh. Acceptable for most content platforms
+
+---
+
+### 3. Scheduler — Single APScheduler instance
+
+**Problem:** Current scheduler runs in-process on one server. At 1M users, recalculating scores every 10 min means processing 1M users in a single batch — takes too long, blocks, fails silently.
+
+**Solution:**
+- **Celery + Redis** — replace APScheduler with Celery workers. Each user's score recalculation becomes an independent task
+- **Celery Beat** triggers the batch every 10 min, distributes 1M individual tasks across worker pool
+- Workers scale horizontally — add more workers as user count grows
+
+---
+
+### 4. API Servers — Single Uvicorn process
+
+**Problem:** One FastAPI process handles all requests. CPU-bound work (scoring, ranking) blocks the event loop.
+
+**Solution:**
+- **Multiple Uvicorn workers** — `uvicorn main:app --workers 4` uses all CPU cores immediately
+- **Load balancer (Nginx)** — sits in front, distributes traffic across multiple server instances
+- **Horizontal scaling** — run multiple server instances behind the load balancer. Stateless design (JWT in cookies, no server-side sessions) makes this straightforward
+
+---
+
+### 5. OTP Emails — Gmail SMTP
+
+**Problem:** Gmail SMTP has sending limits (~500/day). At 1M users signing up, this breaks immediately.
+
+**Solution:**
+- Replace Gmail with **SendGrid or AWS SES**
+- SES costs ~$0.10 per 1000 emails — essentially free at scale
+- Already architected correctly — email sending is in `otp_service.py`, one function swap
+
+---
+
+### 6. Static Files — Served by FastAPI
+
+**Problem:** FastAPI serving HTML/CSS/JS files is inefficient at scale.
+
+**Solution:**
+- **CDN (CloudFront or Cloudflare)** — static files served from edge nodes closest to the user. FastAPI only handles API requests
+- Reduces server load dramatically for read-heavy content
+
+---
+
+### Scaled Architecture at 1M Users
+
+```
+Users
+  ↓
+Cloudflare CDN (static files)
+  ↓
+Nginx Load Balancer
+  ↓         ↓         ↓
+FastAPI   FastAPI   FastAPI   (multiple instances)
+  ↓
+Redis (pre-computed feeds, sessions, OTP cache)
+  ↓
+PgBouncer
+  ↓
+PostgreSQL Primary → Read Replicas
+  ↑
+Celery Workers (score recalculation)
+  ↑
+Celery Beat (scheduler)
+```
+
+### What stays the same
+- The recommendation algorithm logic — scales without changes
+- JWT auth — stateless, works across any number of servers
+- The database schema — just needs partitioning and replicas

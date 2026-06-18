@@ -22,6 +22,7 @@ Built with focus on:
 - **Clean architecture** — routes → services → core, fully separated concerns
 - **42 unit + integration tests** — recommendation engine, auth flows, admin operations, user flows
 - **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
+- **Load tested** — staged Locust tests from 10 to 500 concurrent users, breaking point identified and documented
 
 ---
 
@@ -34,7 +35,7 @@ Built with focus on:
 | ORM | SQLAlchemy 2.0 |
 | Validation | Pydantic v2 |
 | Scheduler | APScheduler |
-| Testing | Pytest |
+| Testing | Pytest + Locust |
 | Frontend | Vanilla JS + Tailwind CSS |
 
 ---
@@ -46,6 +47,7 @@ This project emphasizes:
 - **Backend architecture patterns** — service isolation, dependency injection, background tasks
 - **Performance and scaling tradeoffs** — why batch scoring beats per-request scoring, why pagination happens after ranking
 - **Security best practices** — OTP rate limiting, JWT storage, CORS, race condition prevention
+- **Load testing** — scientifically measured breaking point with root cause analysis
 
 > This is not a CRUD app. Every architectural decision has a documented reason.
 
@@ -63,7 +65,7 @@ This project emphasizes:
 | Email | Gmail SMTP (OTP delivery via BackgroundTasks) |
 | Password Hashing | bcrypt + passlib |
 | Scheduler | APScheduler |
-| Testing | Pytest (unit + integration) |
+| Testing | Pytest (unit + integration) + Locust (load testing) |
 | Frontend | HTML + Vanilla JS + Tailwind CSS |
 | Server | Uvicorn |
 
@@ -110,10 +112,15 @@ content-platform/
 │       ├── unit/
 │       │   ├── test_recommendation.py  # softmax, time decay, tier logic, edge cases
 │       │   └── test_auth.py            # login, signup, OTP, password validation
-│       └── integration/
-│           ├── test_feed.py            # signup → login → feed → auth cycle, pagination shape, duplicate signup
-│           ├── test_admin.py           # admin block → user denied, unblock → access restored, non-admin rejected
-│           └── test_user.py            # profile update, feedback submission, full save → unsave flow
+│       ├── integration/
+│       │   ├── test_feed.py            # signup → login → feed → auth cycle, pagination shape, duplicate signup
+│       │   ├── test_admin.py           # admin block → user denied, unblock → access restored, non-admin rejected
+│       │   └── test_user.py            # profile update, feedback submission, full save → unsave flow
+│       └── load/
+│           ├── locustfile.py           # realistic user flow simulation
+│           ├── run_tests.sh            # staged test runner 10 → 5000 users, auto stop on failure
+│           ├── requirements.txt        # locust dependencies
+│           └── results/               # HTML + CSV reports per stage (gitignored)
 └── frontend/
     ├── index.html                      # landing page with smart redirect
     ├── signup.html
@@ -294,6 +301,104 @@ Scheduled recalculation scales better than instant updates — one batch job for
 
 ---
 
+## Load Testing
+
+Load tested using [Locust](https://locust.io/) with realistic concurrent user simulation.
+
+### Test Flow Per Virtual User
+```
+signup → verify OTP (fetched directly from DB) → login
+→ browse feed → view post → like → save → search → logout → repeat
+```
+
+Each virtual user creates a real account and loops through weighted actions:
+```
+31%   feed browsing      (most common real user action)
+19%   post viewing
+12.5% liking posts
+12.5% saving posts
+6%    searching
+6%    pagination
+6%    logout and back
+6%    viewing saved posts
+```
+
+### Test Environment
+- **CPU:** Intel Core Ultra 7
+- **RAM:** 8GB
+- **Storage:** 512GB SSD
+- **OS:** Windows 11
+- **Server:** Single Uvicorn process, no caching, no Redis
+
+> Note: Tests run locally on Windows 11. Same app on a dedicated Linux server would handle significantly more concurrent users — Windows handles concurrent connections less efficiently than Linux.
+
+### Results
+
+| Concurrent Users | Success Rate | p95 Latency | RPS | Status |
+|---|---|---|---|---|
+| 10 | 100% | ~200ms | 5 | ✅ Perfect |
+| 100 | 99% | ~800ms | 50 | ✅ Excellent |
+| 500 | 74% | 5100ms | 50 | ❌ Breaking point |
+
+**Stable up to ~100 users. Degraded significantly at 500 (74% success rate, 5100ms p95) on current setup**
+= approximately **5,000–10,000 daily active users** on a single unoptimized server
+
+### Why It Breaks at 500 Users
+
+Two root causes identified from failure statistics:
+
+**1. DB connection pool exhausted:**
+```
+pool_size=10 + max_overflow=20 = 30 max connections
+
+/feed alone hits DB 3 times per request:
+  → verify JWT user
+  → fetch 500 posts with joinedload
+  → fetch user preferences
+
+500 users × 3 DB hits = 1500 simultaneous DB requests
+against a pool of 30 → 1470 requests waiting → timeouts
+```
+
+**2. Single Uvicorn process:**
+```
+Recommendation algorithm is CPU-bound (sorting 500 posts)
+Single process = single core
+500 concurrent users queued behind one thread
+/feed p95 latency spiked to 35,000ms under 500 users
+```
+
+**Failure breakdown at 500 users:**
+```
+RemoteDisconnected  → Uvicorn closed connection, queue full
+500 Server Error    → DB pool exhausted, query failed
+p95 /feed           → 35,000ms (35 seconds)
+p95 /auth/login     → 5,300ms
+Overall success     → 74%
+```
+
+### How to Run Load Tests
+
+```bash
+# install locust
+cd backend/tests/load
+pip install -r requirements.txt
+
+# update DB_URL in locustfile.py with your PostgreSQL password
+
+# make sure app is running in another terminal
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# run all staged tests automatically
+bash run_tests.sh
+```
+
+Tests run stages automatically: 10 → 100 → 500 → 1000 → 2000 → 3000 → 5000 users.
+Stops when success rate drops below 95% or p95 latency exceeds 2000ms.
+Each stage saves an HTML report and CSV to `results/`.
+
+---
+
 ## Security
 
 - **OTP rate limiting** — locked after 5 wrong attempts, countdown shown to user, force resend
@@ -332,6 +437,12 @@ pytest tests/ -v
 - `test_feed.py` — signup → login → feed → auth cycle, pagination shape, duplicate signup
 - `test_admin.py` — admin block → user denied, unblock → access restored, non-admin rejected from admin routes
 - `test_user.py` — profile update, feedback submission, full save → unsave flow
+
+**Load tests — `tests/load/`**
+- Staged concurrent user simulation using Locust
+- Realistic user flows with weighted task distribution
+- Auto-stop on failure conditions
+- HTML + CSV reports per stage
 
 All integration tests use SQLite in-memory DB — no real PostgreSQL needed to run tests.
 
@@ -656,73 +767,70 @@ All algorithm parameters are defined as named constants in `recommendation_servi
 
 ## How This Scales to 1M Users
 
-Current architecture handles hundreds of users comfortably.
-Here's what breaks at scale and how to fix each one.
+Current architecture handles ~100 concurrent users comfortably (99% success rate, ~800ms p95).
+Here is what breaks at scale and how to fix each one.
 
 ---
 
-### 1. Database — Single PostgreSQL becomes a bottleneck
+### 1. DB Connection Pool — First bottleneck
 
-**Problem:** Every feed request, interaction, and score update hits one DB instance.
+**Problem:** Pool of 30 connections exhausts at ~100 concurrent users. Load test confirmed this — `/feed` p95 spiked to 35,000ms at 500 users due to connection queue buildup.
 
 **Solution:**
-- **Read replicas** — route all SELECT queries (feed, interactions) to replicas, keep writes on primary
-- **Partitioning** — partition `user_interactions` by `user_id` range. At 1M users with 50 interactions each = 50M rows. Partitioning keeps queries fast without full table scans
-- **Connection pooling with PgBouncer** — 1M users can't each hold a SQLAlchemy connection. PgBouncer sits in front of Postgres and multiplexes thousands of app connections into a small pool
+- **PgBouncer** — connection pooler in front of PostgreSQL, multiplexes thousands of app connections into a small efficient pool
+- **Read replicas** — route all SELECT queries (feed, search) to replicas, writes go to primary
+- **Partitioning** — partition `user_interactions` by `user_id`. At 1M users × 50 interactions = 50M rows
 
 ---
 
-### 2. Recommendation Engine — Scoring 500 posts per request per user
+### 2. Single Uvicorn Process — Second bottleneck
 
-**Problem:** Current design fetches up to 500 posts and ranks them on every feed request. At 1M concurrent users that's 500M post objects in memory.
+**Problem:** CPU-bound ranking algorithm blocks the event loop. One core handling all requests.
 
 **Solution:**
-- **Pre-compute feeds** — instead of ranking at request time, run the recommendation algorithm in the background scheduler and store each user's ranked feed in Redis. Feed request becomes a simple cache read
-- **Redis sorted sets** — store `user:{id}:feed` as a Redis sorted set with post IDs scored by rank. Feed request = `ZRANGE` in O(log N)
-- Trade-off: feed is slightly stale (up to 10 min) vs perfectly fresh. Acceptable for most content platforms
+- **Multiple workers** — `uvicorn main:app --workers 4` uses all CPU cores, 4x throughput immediately, zero code changes
+- **Nginx load balancer** — distribute traffic across multiple server instances
+- **Horizontal scaling** — stateless JWT design means any number of servers can run behind a load balancer
 
 ---
 
-### 3. Scheduler — Single APScheduler instance
+### 3. Recommendation Engine — Per-request ranking at scale
 
-**Problem:** Current scheduler runs in-process on one server. At 1M users, recalculating scores every 10 min means processing 1M users in a single batch — takes too long, blocks, fails silently.
+**Problem:** Every `/feed` request fetches 500 posts and runs the full ranking algorithm. At 1M concurrent users = 500M post objects in memory simultaneously.
 
 **Solution:**
-- **Celery + Redis** — replace APScheduler with Celery workers. Each user's score recalculation becomes an independent task
-- **Celery Beat** triggers the batch every 10 min, distributes 1M individual tasks across worker pool
-- Workers scale horizontally — add more workers as user count grows
+- **Pre-compute feeds** — run ranking in background scheduler, store each user's ranked feed in Redis
+- **Redis sorted sets** — `user:{id}:feed` with post IDs scored by rank. Feed request = `ZRANGE` in O(log N) instead of O(F log F)
+- Trade-off: feed is slightly stale (up to 10 min) vs perfectly fresh — acceptable for most platforms
 
 ---
 
-### 4. API Servers — Single Uvicorn process
+### 4. Scheduler — Single in-process APScheduler
 
-**Problem:** One FastAPI process handles all requests. CPU-bound work (scoring, ranking) blocks the event loop.
+**Problem:** At 1M users, recalculating scores every 10 min in one batch takes too long and competes with request handling.
 
 **Solution:**
-- **Multiple Uvicorn workers** — `uvicorn main:app --workers 4` uses all CPU cores immediately
-- **Load balancer (Nginx)** — sits in front, distributes traffic across multiple server instances
-- **Horizontal scaling** — run multiple server instances behind the load balancer. Stateless design (JWT in cookies, no server-side sessions) makes this straightforward
+- **Celery + Redis** — each user's score recalculation becomes an independent distributed task
+- **Celery Beat** triggers the batch, workers process users in parallel across a worker pool
 
 ---
 
-### 5. OTP Emails — Gmail SMTP
+### 5. Gmail SMTP — Email sending limit
 
-**Problem:** Gmail SMTP has sending limits (~500/day). At 1M users signing up, this breaks immediately.
+**Problem:** Gmail SMTP limit ~500 emails/day. Breaks immediately at scale.
 
 **Solution:**
-- Replace Gmail with **SendGrid or AWS SES**
-- SES costs ~$0.10 per 1000 emails — essentially free at scale
-- Already architected correctly — email sending is in `otp_service.py`, one function swap
+- Replace with **AWS SES or SendGrid** — SES costs ~$0.10 per 1000 emails
+- Already architected correctly — one function swap in `otp_service.py`
 
 ---
 
 ### 6. Static Files — Served by FastAPI
 
-**Problem:** FastAPI serving HTML/CSS/JS files is inefficient at scale.
+**Problem:** FastAPI serving HTML/CSS/JS wastes server resources at scale.
 
 **Solution:**
-- **CDN (CloudFront or Cloudflare)** — static files served from edge nodes closest to the user. FastAPI only handles API requests
-- Reduces server load dramatically for read-heavy content
+- **CDN (Cloudflare or CloudFront)** — static files served from edge nodes globally, FastAPI handles API only
 
 ---
 
@@ -731,13 +839,13 @@ Here's what breaks at scale and how to fix each one.
 ```
 Users
   ↓
-Cloudflare CDN (static files)
+Cloudflare CDN (static files + DDoS protection)
   ↓
 Nginx Load Balancer
-  ↓         ↓         ↓
-FastAPI   FastAPI   FastAPI   (multiple instances)
+  ↓           ↓           ↓
+FastAPI     FastAPI     FastAPI     (4 workers each)
   ↓
-Redis (pre-computed feeds, sessions, OTP cache)
+Redis (pre-computed feeds, OTP cache, sessions)
   ↓
 PgBouncer
   ↓
@@ -745,10 +853,11 @@ PostgreSQL Primary → Read Replicas
   ↑
 Celery Workers (score recalculation)
   ↑
-Celery Beat (scheduler)
+Celery Beat (scheduler every 10 min)
 ```
 
 ### What stays the same
-- The recommendation algorithm logic — scales without changes
+- Recommendation algorithm logic — scales without changes
 - JWT auth — stateless, works across any number of servers
-- The database schema — just needs partitioning and replicas
+- Database schema — just needs partitioning and replicas
+- All existing tests — zero changes needed

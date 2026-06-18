@@ -12,3 +12,6 @@ venv/
 .DS_Store
 
 test.db
+
+# load test results
+backend/tests/load/results/

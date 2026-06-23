@@ -1,3 +1,12 @@
+---
+title: Content Recommendation Platform
+emoji: 🎯
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # ContentPlatform — Personalized Recommendation System 
  
 A production-style backend system that delivers a personalized content feed using a multi-tier recommendation engine.

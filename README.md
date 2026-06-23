@@ -1,9 +1,12 @@
 ---
-title: Content Recommendation Platform
-emoji: 🎯
+title: My First Space
+emoji: 🚀
 colorFrom: blue
 colorTo: purple
-sdk: docker
+sdk: gradio
+sdk_version: "4.29.0"
+python_version: "3.10"
+app_file: app.py
 pinned: false
 ---
 

@@ -1,12 +1,10 @@
 ---
 title: My Space
 emoji: 🌟
-colorFrom: indigo
-colorTo: pink
-sdk: gradio
-sdk_version: "4.29.0"
-python_version: "3.10"
-app_file: app.py
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 

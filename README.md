@@ -3,7 +3,7 @@ title: My First Space
 emoji: 🚀
 colorFrom: blue
 colorTo: purple
-sdk: gradio
+sdk: docker
 sdk_version: "4.29.0"
 python_version: "3.10"
 app_file: app.py

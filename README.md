@@ -1,10 +1,11 @@
 ---
-title: My Space
-emoji: 🌟
+title: My App
+emoji: 🚀
 colorFrom: blue
-colorTo: purple
+colorTo: green
 sdk: docker
-app_port: 7860
+sdk_version: "5.0.0"
+app_file: app.py
 pinned: false
 ---
 

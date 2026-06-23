@@ -1,5 +1,5 @@
 ---
-title: My First Space
+title: Content Platform
 emoji: 🚀
 colorFrom: blue
 colorTo: purple

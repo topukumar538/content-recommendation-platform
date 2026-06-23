@@ -1,23 +1,17 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# set working directory
 WORKDIR /app
 
-# install dependencies first (cached layer)
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# copy backend code
-COPY backend/ ./backend/
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# copy frontend
-COPY frontend/ ./frontend/
+COPY backend/ .
 
-# set working directory to backend for uvicorn
-WORKDIR /app/backend
+ENV PYTHONUNBUFFERED=1
+ENV PORT=7860
 
-# expose port
-EXPOSE 8000
+EXPOSE 7860
 
-# run the app
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--log-level", "debug"]

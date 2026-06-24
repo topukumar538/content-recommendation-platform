@@ -1,4 +1,13 @@
 ---
+title: Content Recommendation Platform
+emoji: 🎯
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
+---
 title: My App
 emoji: 🚀
 colorFrom: blue

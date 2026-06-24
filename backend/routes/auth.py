@@ -48,7 +48,8 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
             value=result["token"],
             httponly=True,
             max_age=settings.LOGIN_EXPIRE_TIME * 24 * 60 * 60,
-            samesite="lax"
+            samesite="none",  # ← CHANGED: lax → none (required for cross-origin/iframe)
+            secure=True       # ← ADDED: required when samesite=none
         )
         return {"message": "Login successful", "role": result["role"]}
     except ValueError as e:

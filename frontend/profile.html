@@ -143,6 +143,9 @@
                     showMsg("pass-success", "OTP sent to your email!")
                     document.getElementById("request-otp-section").classList.add("hidden")
                     document.getElementById("otp-section").classList.remove("hidden")
+                    // ← ADD RIGHT HERE
+                    document.getElementById("otp-code").value = "123456"
+                    showMsg("pass-success", "⚠️ SMTP bypassed — use code 123456 to verify")
                 } else {
                     showMsg("pass-error", data.detail)
                 }

@@ -13,6 +13,8 @@ pinned: false
  
 A production-style backend system that delivers a personalized content feed using a multi-tier recommendation engine.
 
+🔗 **[Live Demo](https://huggingface.co/spaces/topukumar/content-recommendation-platform)**
+
 Built with focus on:
 - System design and scalability tradeoffs
 - Real-world backend architecture patterns

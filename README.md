@@ -7,16 +7,6 @@ sdk: docker
 pinned: false
 ---
 
----
-title: My App
-emoji: 🚀
-colorFrom: blue
-colorTo: green
-sdk: docker
-sdk_version: "5.0.0"
-app_file: app.py
-pinned: false
----
 
 
 # ContentPlatform — Personalized Recommendation System 

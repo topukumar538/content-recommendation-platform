@@ -1,5 +1,5 @@
-import os
-os.environ["DEMO_MODE"] = "true"  
+# import os
+# os.environ["DEMO_MODE"] = "true"  
 
 import pytest
 from fastapi.testclient import TestClient

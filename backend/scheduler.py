@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import SessionLocal
 from models import User, UserInteraction, Feed, CategoryPreference
+from sqlalchemy import func, case
 
 ACTION_WEIGHTS = {"viewed": 1, "liked": 3, "saved": 5}
 
@@ -17,7 +18,7 @@ def recalculate_all_scores():
     finally:
         db.close()
 
-from sqlalchemy import func, case
+
 
 def update_scores_for_user(user_id: int, db):
     # Single grouped join replaces the previous per-interaction lookup

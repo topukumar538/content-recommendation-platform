@@ -4,7 +4,8 @@ from locust import HttpUser, task, between, events
 from sqlalchemy import create_engine, text
 
 # ── DB connection (same as your app) ──────────────────────────
-DB_URL = "postgresql://postgres:password@localhost:5432/contentplatform"
+import os
+DB_URL = os.environ.get("LOAD_TEST_DB_URL", "postgresql://postgres:password@localhost:5432/contentplatform")
 engine = create_engine(DB_URL)
 
 

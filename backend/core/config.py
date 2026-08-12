@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     REQUIRE_DB_SSL: bool = False
 
     DEMO_MODE: bool = False
-    REQUIRE_DB_SSL: bool = False
+
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),

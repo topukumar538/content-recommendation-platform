@@ -8,7 +8,7 @@ from models import User
 # mock email globally — never send real emails during tests
 @pytest.fixture(autouse=True)
 def mock_email():
-    with patch("services.otp_service.send_otp_email"):
+    with patch("routes.auth.send_otp_email"):
         yield
 
 def register_and_login(client, email="user@test.com", password="123456"):

@@ -17,36 +17,53 @@ def recalculate_all_scores():
     finally:
         db.close()
 
+from sqlalchemy import func, case
+
 def update_scores_for_user(user_id: int, db):
-    interactions = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user_id
-    ).all()
-    if not interactions:
-        return
-    category_scores = {}
-    for interaction in interactions:
-        feed = db.query(Feed).filter(Feed.id == interaction.feed_id).first()
-        if not feed:
-            continue
-        weight = ACTION_WEIGHTS.get(interaction.action, 0)
-        category_scores[feed.category_id] = category_scores.get(feed.category_id, 0) + weight
+    # Single grouped join replaces the previous per-interaction lookup
+    # (one query per interaction → one query per user).
+    rows = (
+        db.query(
+            Feed.category_id,
+            func.sum(
+                case(
+                    (UserInteraction.action == "viewed", 1),
+                    (UserInteraction.action == "liked", 3),
+                    (UserInteraction.action == "saved", 5),
+                    else_=0,
+                )
+            ).label("score"),
+        )
+        .join(Feed, Feed.id == UserInteraction.feed_id)
+        .filter(UserInteraction.user_id == user_id)
+        .group_by(Feed.category_id)
+        .all()
+    )
+
+    category_scores = {cat_id: float(score or 0) for cat_id, score in rows}
     total = sum(category_scores.values())
+
+    # Clear preferences for categories the user no longer interacts with,
+    # otherwise stale scores survive forever after an unlike.
+    db.query(CategoryPreference).filter(
+        CategoryPreference.user_id == user_id,
+        ~CategoryPreference.category_id.in_(category_scores.keys() or [-1]),
+    ).delete(synchronize_session=False)
+
     if total == 0:
+        db.commit()
         return
+
     for category_id, score in category_scores.items():
         probability = round(score / total, 4)
         existing = db.query(CategoryPreference).filter(
             CategoryPreference.user_id == user_id,
-            CategoryPreference.category_id == category_id
+            CategoryPreference.category_id == category_id,
         ).first()
         if existing:
             existing.score = probability
         else:
-            db.add(CategoryPreference(
-                user_id=user_id,
-                category_id=category_id,
-                score=probability
-            ))
+            db.add(CategoryPreference(user_id=user_id, category_id=category_id, score=probability))
     db.commit()
 
 def start_scheduler():

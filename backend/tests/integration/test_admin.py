@@ -8,7 +8,7 @@ from models import User
 # ── mock email globally ───────────────────────────────────────
 @pytest.fixture(autouse=True)
 def mock_email():
-    with patch("services.otp_service.send_otp_email"):
+    with patch("routes.auth.send_otp_email"):
         yield
 
 

@@ -3,16 +3,29 @@ import string
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from models import OTPCode
 from core.config import settings
 
+# Hugging Face Spaces blocks outbound SMTP, so the public demo cannot deliver
+# email. DEMO_MODE swaps in a fixed code and skips delivery entirely.
+# Production path (DEMO_MODE=false) uses secrets.choice + real SMTP.
+DEMO_OTP_CODE = "123456"
+
+
 def generate_otp() -> str:
-    return "123456"
-    # return ''.join(secrets.choice(string.digits) for _ in range(6))
+    if settings.DEMO_MODE:
+        return DEMO_OTP_CODE
+    return ''.join(secrets.choice(string.digits) for _ in range(6))
+
 
 def send_otp_email(email: str, code: str, purpose: str):
+    if settings.DEMO_MODE:
+        # No SMTP egress on the demo host; the frontend surfaces the fixed code.
+        print(f"[DEMO_MODE] OTP for {email} ({purpose}): {code} — email not sent")
+        return
+
     subject = "Your OTP Code — ContentPlatform"
     if purpose == "signup":
         body = f"""Welcome to ContentPlatform!
@@ -53,6 +66,7 @@ If you did not request this, ignore this email."""
         print(f"Email sending failed: {e}")
         raise Exception("Failed to send OTP email")
 
+
 def create_otp(email: str, purpose: str, db: Session) -> str:
     # delete old OTPs
     db.query(OTPCode).filter(
@@ -68,10 +82,11 @@ def create_otp(email: str, purpose: str, db: Session) -> str:
     db.add(otp)
     db.commit()
 
-    return code   # ← just returns code, no email sent here anymore
+    return code   # delivery is handled by the caller via BackgroundTasks
 
 
 MAX_OTP_ATTEMPTS = 5
+
 
 def verify_otp(email: str, code: str, purpose: str, db: Session) -> bool:
     otp = db.query(OTPCode).filter(
@@ -84,9 +99,14 @@ def verify_otp(email: str, code: str, purpose: str, db: Session) -> bool:
         raise ValueError("Invalid OTP. Please request a new one.")
 
     # check expiry
-    created_at = otp.created_at.replace(tzinfo=None)
+    # created_at is DateTime(timezone=True), but SQLite (tests) returns naive
+    # values. Assume UTC when naive rather than stripping the offset, which
+    # would shift expiry by the server's UTC offset.
+    created_at = otp.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
     expiry = created_at + timedelta(minutes=settings.OTP_EXPIRE_MIN)
-    if datetime.utcnow() > expiry:
+    if datetime.now(timezone.utc) > expiry:
         raise ValueError("OTP expired. Please request a new one.")
 
     # check if locked

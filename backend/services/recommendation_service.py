@@ -1,6 +1,6 @@
 import math
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 # ===== config =====
@@ -13,7 +13,7 @@ EPSILON             = 0.1
 PREF_WEIGHT         = 0.7
 FRESH_WEIGHT        = 0.3
 BASE_SCORE          = 0.1
-TIME_DECAY_HOURS    = 24
+TIME_DECAY_HOURS    = 24   # time constant of exp(-t/24h); half-life is 24*ln2 ≈ 16.6h
 
 
 def softmax(scores, temperature=SOFTMAX_TEMPERATURE):
@@ -25,7 +25,12 @@ def softmax(scores, temperature=SOFTMAX_TEMPERATURE):
 
 
 def time_decay(created_at):
-    hours = (datetime.utcnow() - created_at.replace(tzinfo=None)).total_seconds() / 3600
+    # Columns are DateTime(timezone=True), but SQLite (tests) hands back naive
+    # datetimes. Assume UTC when naive, convert when aware — .replace(tzinfo=None)
+    # would silently drop the offset instead of converting it.
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
     return math.exp(-hours / TIME_DECAY_HOURS)
 
 
@@ -72,19 +77,27 @@ def rank_feeds(all_feeds, preferences):
         seen_ids.add(feed.id)
         cat_count[feed.category_id] += 1
 
-    # TIER 2 — O(F) to build pool, O(T2) softmax weighted sampling
-    # Probabilistic exploration — high score = more likely, not guaranteed
+    # TIER 2 — O(F) to build pool, O(T2 * F) weighted sampling without replacement
+    # Probabilistic exploration — high score = more likely, not guaranteed.
+    # random.choices() samples WITH replacement, so drawing k=TIER2_SIZE in one
+    # call can return duplicates and yield fewer than TIER2_SIZE distinct posts.
+    # Drawing one at a time and removing the pick guarantees TIER2_SIZE distinct
+    # posts whenever the pool is large enough.
     remaining_pool = [f for f in all_feeds if f.id not in seen_ids]
     if remaining_pool:
         pool_scores = [raw[f.id] for f in remaining_pool]
+        pool        = list(remaining_pool)
         weights     = softmax(pool_scores)   # O(F) — exp() per post
-        candidates  = random.choices(remaining_pool, weights=weights, k=TIER2_SIZE)
-        added = 0
-        for feed in candidates:
-            if feed.id not in seen_ids and added < TIER2_SIZE:
-                result.append(feed)
-                seen_ids.add(feed.id)
-                added += 1
+        weights     = list(weights)
+        added       = 0
+        while pool and added < TIER2_SIZE:
+            pick = random.choices(pool, weights=weights, k=1)[0]
+            idx  = pool.index(pick)
+            pool.pop(idx)
+            weights.pop(idx)
+            result.append(pick)
+            seen_ids.add(pick.id)
+            added += 1
 
     # EPSILON GREEDY — O(F) to find unseen posts
     # 10% chance of truly random post — breaks filter bubble

@@ -40,16 +40,17 @@ def verify_otp(data: VerifyOTPRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/login")
-def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(data: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     try:
         result = auth_service.login(data, db)
+        is_secure = request.url.scheme == "https"
         response.set_cookie(
             key="token",
             value=result["token"],
             httponly=True,
             max_age=settings.LOGIN_EXPIRE_TIME * 24 * 60 * 60,
-            samesite="none",  # ← CHANGED: lax → none (required for cross-origin/iframe)
-            secure=True       # ← ADDED: required when samesite=none
+            samesite="none" if is_secure else "lax",
+            secure=is_secure
         )
         return {"message": "Login successful", "role": result["role"]}
     except ValueError as e:

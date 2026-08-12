@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from core.dependencies import get_db, get_current_user, admin_only, get_current_active_user
+from core.dependencies import get_db, admin_only, get_current_active_user
 from schemas.feed import FeedCreate, FeedUpdate
 from schemas.category import CategoryCreate, CategoryUpdate
 from services import feed_service
@@ -70,14 +70,14 @@ def get_feed(
     }
 
 @router.get("/feed/{feed_id}/interactions")
-def get_interactions(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_interactions(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     liked = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user["user_id"],
+        UserInteraction.user_id == user.id,
         UserInteraction.feed_id == feed_id,
         UserInteraction.action == "liked"
     ).first()
     saved = db.query(UserInteraction).filter(
-        UserInteraction.user_id == user["user_id"],
+        UserInteraction.user_id == user.id,
         UserInteraction.feed_id == feed_id,
         UserInteraction.action == "saved"
     ).first()
@@ -87,10 +87,10 @@ def get_interactions(feed_id: int, db: Session = Depends(get_db), user=Depends(g
     }
 
 @router.get("/feed/{feed_id}")
-def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     try:
         feed = feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user["user_id"], feed_id, "viewed", db)
+        feed_service.record_interaction(user.id, feed_id, "viewed", db)
         return {
             "id": feed.id,
             "title": feed.title,
@@ -104,19 +104,19 @@ def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/feed/{feed_id}/like")
-def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def like_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        result = feed_service.toggle_interaction(user["user_id"], feed_id, "liked", db)
+        result = feed_service.toggle_interaction(user.id, feed_id, "liked", db)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/feed/{feed_id}/save")
-def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
     try:
         feed_service.get_feed_by_id(feed_id, db)
-        result = feed_service.toggle_interaction(user["user_id"], feed_id, "saved", db)
+        result = feed_service.toggle_interaction(user.id, feed_id, "saved", db)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -124,7 +124,7 @@ def save_feed(feed_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 @router.post("/feed")
 def create_feed(data: FeedCreate, db: Session = Depends(get_db), user=Depends(admin_only)):
     try:
-        feed = feed_service.create_feed(data, user["user_id"], db)
+        feed = feed_service.create_feed(data, user.id, db)
         return {"id": feed.id, "title": feed.title, "message": "Post created"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -61,7 +61,7 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id, p
     if category_id:
         query = query.filter(Feed.category_id == category_id)
 
-    all_feeds = query.limit(FEED_LIMIT).all()
+    all_feeds = query.order_by(Feed.created_at.desc()).limit(FEED_LIMIT).all()
 
     if not all_feeds:
         return {"items": [], "total": 0, "page": page, "pages": 0}

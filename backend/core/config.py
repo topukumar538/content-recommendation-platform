@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     GMAIL_USER: str = "example@gmail.com"
     GMAIL_PASSWORD: str = "dummy-password"
     ALLOWED_ORIGINS: str = "http://localhost:8000"
+    REQUIRE_DB_SSL: bool = False
+
+    DEMO_MODE: bool = False
+    REQUIRE_DB_SSL: bool = False
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),

@@ -6,7 +6,7 @@ from models import User, Category, Feed, UserInteraction
 # mock email globally
 @pytest.fixture(autouse=True)
 def mock_email():
-    with patch("services.otp_service.send_otp_email"):
+    with patch("routes.auth.send_otp_email"):
         yield
 
 def create_user_and_login(client, email="user@test.com", password="123456"):

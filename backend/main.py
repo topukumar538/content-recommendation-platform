@@ -9,6 +9,7 @@ from core.security import decode_token
 from jose import JWTError
 from scheduler import start_scheduler
 from core.config import settings
+from services.otp_service import DEMO_OTP_CODE
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +32,15 @@ app.include_router(auth.router)
 app.include_router(feed.router)
 app.include_router(admin.router)
 app.include_router(user.router)
+
+
+
+@app.get("/config")
+def get_config():
+    return {
+        "demo_mode": settings.DEMO_MODE,
+        "demo_otp": DEMO_OTP_CODE if settings.DEMO_MODE else None,
+    }
 
 @app.get("/health")
 def health():

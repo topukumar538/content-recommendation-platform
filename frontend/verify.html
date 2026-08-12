@@ -53,12 +53,20 @@
         if (!email) window.location.href = "/app/signup.html"
         document.getElementById("email-display").textContent = email
 
-        // ← ADD: show bypass message and pre-fill the code
-        const bypassMsg = document.createElement("div")
-        bypassMsg.className = "bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-5 text-sm text-center"
-        bypassMsg.innerHTML = "⚠️ SMTP bypassed — use code <strong>123456</strong> to verify"
-        document.querySelector(".glass").insertBefore(bypassMsg, document.getElementById("error"))
-        document.getElementById("code").value = "123456"  // ← pre-fill for convenience
+        // The demo host blocks outbound SMTP, so it runs with DEMO_MODE=true and
+        // issues a fixed code. Ask the server instead of hardcoding the notice —
+        // otherwise it would also show on local runs that send real email.
+        fetch("/config")
+            .then(r => r.ok ? r.json() : null)
+            .then(cfg => {
+                if (!cfg || !cfg.demo_mode) return
+                const notice = document.createElement("div")
+                notice.className = "bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-5 text-sm text-center"
+                notice.innerHTML = "Email delivery is disabled on this demo — use code <strong>" + cfg.demo_otp + "</strong>"
+                document.querySelector(".glass").insertBefore(notice, document.getElementById("error"))
+                document.getElementById("code").value = cfg.demo_otp
+            })
+            .catch(() => {})   // no /config endpoint — behave as a normal deployment
 
         let seconds = 60
         let timerInterval = null

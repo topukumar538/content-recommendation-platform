@@ -13,7 +13,7 @@ pinned: false
  
 A production-style backend system that delivers a personalized content feed using a multi-tier recommendation engine.
 
-🔗 **[Live Demo](https://huggingface.co/spaces/topukumar/content-recommendation-platform)**
+🔗 **[Live Demo](https://topukumar-content-recommendation-platform.hf.space)**
 
 > **About the live demo:** Hugging Face Spaces blocks outbound SMTP, so the demo runs with `DEMO_MODE=true` — OTPs are fixed at `123456` and email delivery is skipped. The production path (`DEMO_MODE=false`, the default) generates codes with `secrets.choice` and delivers them over SMTP. See [Demo Mode](#demo-mode).
 

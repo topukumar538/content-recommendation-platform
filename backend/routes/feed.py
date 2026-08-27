@@ -87,19 +87,21 @@ def get_interactions(feed_id: int, db: Session = Depends(get_db), user=Depends(g
     }
 
 @router.get("/feed/{feed_id}")
-def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_active_user)):
+def get_feed_detail(feed_id: int, request: Request, db: Session = Depends(get_db),
+                    user=Depends(get_current_active_user)):
     try:
         feed = feed_service.get_feed_by_id(feed_id, db)
-        feed_service.record_interaction(user.id, feed_id, "viewed", db)
-        return {
+        payload = {
             "id": feed.id,
             "title": feed.title,
             "content": feed.content,
             "category": feed.category.name,
             "category_id": feed.category_id,
             "author": feed.author.username,
-            "created_at": str(feed.created_at)
+            "created_at": str(feed.created_at),
         }
+        feed_service.record_interaction(user.id, feed_id, "viewed", db)
+        return payload
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

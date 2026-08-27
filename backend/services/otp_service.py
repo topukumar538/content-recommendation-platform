@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from models import OTPCode
 from core.config import settings
 
-# Hugging Face Spaces blocks outbound SMTP, so the public demo cannot deliver
-# email. DEMO_MODE swaps in a fixed code and skips delivery entirely.
-# Production path (DEMO_MODE=false) uses secrets.choice + real SMTP.
+import logging
+
+logger = logging.getLogger(__name__)
+
 DEMO_OTP_CODE = "123456"
 
 
@@ -62,9 +63,9 @@ If you did not request this, ignore this email."""
             server.ehlo()
             server.login(settings.GMAIL_USER, settings.GMAIL_PASSWORD)
             server.sendmail(settings.GMAIL_USER, email, msg.as_string())
-    except Exception as e:
-        print(f"Email sending failed: {e}")
-        raise Exception("Failed to send OTP email")
+    except Exception:
+        logger.exception("OTP delivery failed for %s (purpose=%s)", email, purpose)
+        raise
 
 
 def create_otp(email: str, purpose: str, db: Session) -> str:

@@ -140,12 +140,20 @@
                 })
                 const data = await res.json()
                 if (res.ok) {
-                    showMsg("pass-success", "OTP sent to your email!")
                     document.getElementById("request-otp-section").classList.add("hidden")
                     document.getElementById("otp-section").classList.remove("hidden")
-                    // ← ADD RIGHT HERE
-                    document.getElementById("otp-code").value = "123456"
-                    showMsg("pass-success", "⚠️ SMTP bypassed — use code 123456 to verify")
+
+                    const cfg = await fetch("/config")
+                        .then(r => (r.ok ? r.json() : null))
+                        .catch(() => null)
+
+                    if (cfg && cfg.demo_mode) {
+                        document.getElementById("otp-code").value = cfg.demo_otp
+                        showMsg("pass-success", `Email delivery is disabled — use code ${cfg.demo_otp}`)
+                    } else {
+                        showMsg("pass-success", "OTP sent to your email!")
+                    }
+
                 } else {
                     showMsg("pass-error", data.detail)
                 }
@@ -192,12 +200,18 @@
             }
         }
 
+        function fmtDetail(detail) {
+            if (Array.isArray(detail)) return detail.map(e => e.msg || JSON.stringify(e)).join(", ")
+            if (detail && typeof detail === "object") return JSON.stringify(detail)
+            return detail || "Something went wrong"
+        }
+
         function showMsg(id, msg) {
             const ids = ["profile-error", "profile-success", "pass-error", "pass-success"]
             ids.forEach(i => {
                 const el = document.getElementById(i)
                 if (i === id) {
-                    el.textContent = msg
+                    el.textContent = fmtDetail(msg)
                     el.classList.remove("hidden")
                 } else {
                     el.classList.add("hidden")

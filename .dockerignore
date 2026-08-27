@@ -1,8 +1,14 @@
-venv/
-__pycache__/
+
 *.pyc
 .env
 .git/
-backend/tests/load/results/
 test.db
 *.md
+
+backend/.env
+backend/test.db
+backend/app.db
+**/__pycache__/
+**/*.pyc
+venv/
+backend/tests/load/results/

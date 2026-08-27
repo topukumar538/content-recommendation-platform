@@ -5,16 +5,30 @@ from sqlalchemy import func, case
 
 ACTION_WEIGHTS = {"viewed": 1, "liked": 3, "saved": 5}
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def recalculate_all_scores():
-    print("Scheduler: recalculating scores...")
     db = SessionLocal()
     try:
-        users = db.query(User).filter(User.is_active == True).all()
-        for user in users:
-            update_scores_for_user(user.id, db)
-        print(f"Scheduler: updated {len(users)} users")
-    except Exception as e:
-        print(f"Scheduler error: {e}")
+        user_ids = [
+            row[0] for row in
+            db.query(User.id).filter(
+                User.is_active == True,      
+                User.is_blocked == False,    
+            ).all()
+        ]
+        updated = 0
+        for user_id in user_ids:
+            try:
+                update_scores_for_user(user_id, db)
+                updated += 1
+            except Exception:
+                db.rollback()
+                logger.exception("Score update failed for user %s", user_id)
+        logger.info("Scheduler: updated %s/%s users", updated, len(user_ids))
     finally:
         db.close()
 

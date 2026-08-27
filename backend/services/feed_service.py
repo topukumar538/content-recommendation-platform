@@ -12,7 +12,10 @@ def get_all_categories(db: Session):
 
 
 def create_category(name: str, db: Session):
-    existing = db.query(Category).filter(Category.name == name).first()
+    existing = db.query(Category).filter(
+    Category.name == name,
+    Category.id != category_id,
+    ).first()
     if existing:
         raise ValueError("Category already exists")
     category = Category(name=name)
@@ -108,7 +111,10 @@ def create_feed(data: FeedCreate, author_id: int, db: Session):
 
 
 def update_feed(feed_id: int, data: FeedUpdate, db: Session):
-    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    existing = db.query(Category).filter(
+    Category.name == name,
+    Category.id != category_id,
+    ).first()
     if not feed:
         raise ValueError("Post not found")
     feed.title = data.title

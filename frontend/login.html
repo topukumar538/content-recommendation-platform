@@ -109,11 +109,15 @@
     </div>
 
     <script>
-        function showError(msg) {
+        function showError(detail) {
             const el = document.getElementById("error")
-            el.textContent = msg
-            el.classList.remove("hidden")
-        }
+            if (Array.isArray(detail)) {
+                    el.textContent = detail.map(e => e.msg).join(", ")
+                } else {
+                    el.textContent = detail || "Something went wrong"
+                }
+                el.classList.remove("hidden")
+            }
         async function login() {
             const email = document.getElementById("email").value.trim()
             const password = document.getElementById("password").value

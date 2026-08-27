@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   db:
@@ -30,7 +28,8 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:12sql@db:5432/contentplatform
+      # .env has localhost (manual setup); inside the container the DB is at db:5432
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/contentplatform
     depends_on:
       db:
         condition: service_healthy

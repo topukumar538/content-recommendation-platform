@@ -85,9 +85,15 @@
             document.getElementById("rating-text").textContent = ratingLabels[rating]
         }
 
+        function fmtDetail(detail) {
+            if (Array.isArray(detail)) return detail.map(e => e.msg || JSON.stringify(e)).join(", ")
+            if (detail && typeof detail === "object") return JSON.stringify(detail)
+            return detail || "Something went wrong"
+        }
+
         function showError(msg) {
             const el = document.getElementById("error")
-            el.textContent = msg
+            el.textContent = fmtDetail(msg)
             el.classList.remove("hidden")
             document.getElementById("success").classList.add("hidden")
         }

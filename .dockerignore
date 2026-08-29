@@ -1,14 +1,12 @@
+# ML experiment — not on the request path, never imported by the app
+backend/ml/
+backend/simulate.py
+backend/populate.py
+backend/dataset.py
+backend/train.py
+scorer.keras
+scaler.pkl
+affinities.json
 
-*.pyc
-.env
-.git/
+# test artifacts
 test.db
-*.md
-
-backend/.env
-backend/test.db
-backend/app.db
-**/__pycache__/
-**/*.pyc
-venv/
-backend/tests/load/results/

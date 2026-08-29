@@ -136,12 +136,17 @@
             const feeds = data.items
             const container = document.getElementById("feed-list")
 
-            if (feeds.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center py-20 text-gray-400">
-                        <div class="text-5xl mb-4">📭</div>
-                        <p>No posts found.</p>
-                    </div>`
+                        if (feeds.length === 0) {
+                container.innerHTML = data.exhausted
+                    ? `<div class="text-center py-20 text-gray-400">
+                           <div class="text-5xl mb-4">✨</div>
+                           <p>You're all caught up.</p>
+                           <p class="text-sm mt-2">Check back later for new posts.</p>
+                       </div>`
+                    : `<div class="text-center py-20 text-gray-400">
+                           <div class="text-5xl mb-4">📭</div>
+                           <p>No posts found.</p>
+                       </div>`
                 renderPagination(data)
                 return
             }

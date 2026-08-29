@@ -73,8 +73,13 @@ class CategoryPreference(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), index=True)
     score: Mapped[float] = mapped_column(Float, default=0.0)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
+    __table_args__ = (
+        UniqueConstraint("user_id", "category_id", name="uq_user_category"),
+    )
 
 class Feedback(Base):
     __tablename__ = "feedbacks"
@@ -85,3 +90,17 @@ class Feedback(Base):
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     user: Mapped["User"] = relationship("User")
+
+
+class Impression(Base):
+    __tablename__ = "impressions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id"), index=True)
+    shown_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_impressions_feed_time", "feed_id", "shown_at"),
+    )

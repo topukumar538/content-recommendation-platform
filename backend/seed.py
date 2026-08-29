@@ -1,42 +1,36 @@
 import requests
 
 BASE_URL = "http://localhost:8000"
+s = requests.Session()
 
-# ===== STEP 1 — Login as admin =====
-login_res = requests.post(f"{BASE_URL}/auth/login", json={
-    "email": "your_admin_gmail",  # ← change this
-    "password": "admin_password"        # ← change this
+login_res = s.post(f"{BASE_URL}/auth/login", json={
+    "email": "your@email.com",
+    "password": "123456"
 })
-
 if not login_res.ok:
-    print("Login failed:", login_res.json())
-    exit()
-
-cookies = login_res.cookies
+    print("Login failed:", login_res.json()); exit()
 print("✅ Logged in as admin")
+print("cookies:", s.cookies.get_dict())
 
 # ===== STEP 2 — Create 5 categories =====
 categories = ["Technology", "Science", "Business", "Health", "Sports"]
 category_ids = {}
 
 for name in categories:
-    res = requests.post(f"{BASE_URL}/categories",
-        json={"name": name},
-        cookies=cookies
-    )
+    res = s.post(f"{BASE_URL}/categories", json={"name": name})
     if res.ok:
         category_ids[name] = res.json()["id"]
         print(f"✅ Category created: {name}")
     else:
-        # already exists — fetch it
-        res2 = requests.get(f"{BASE_URL}/categories", cookies=cookies)
-        for c in res2.json():
-            if c["name"] == name:
-                category_ids[name] = c["id"]
-                print(f"⚠️  Category already exists: {name}")
+        print(f"⚠️  {name}: {res.status_code} {res.text}")
+        res2 = s.get(f"{BASE_URL}/categories")
+        if res2.ok:
+            for c in res2.json():
+                if c["name"] == name:
+                    category_ids[name] = c["id"]
+                    print(f"   → found existing id {c['id']}")
 
 print(f"\nCategory IDs: {category_ids}\n")
-
 # ===== STEP 3 — Create 100 posts (20 per category) =====
 posts = {
     "Technology": [
@@ -156,17 +150,14 @@ total = 0
 for category_name, category_posts in posts.items():
     cat_id = category_ids.get(category_name)
     if not cat_id:
-        print(f"❌ Category ID not found for {category_name}")
+        print(f"❌ No category id for {category_name}")
         continue
     for title, content in category_posts:
-        res = requests.post(f"{BASE_URL}/feed",
-            json={"title": title, "content": content, "category_id": cat_id},
-            cookies=cookies
-        )
+        res = s.post(f"{BASE_URL}/feed",
+                     json={"title": title, "content": content, "category_id": cat_id})
         if res.ok:
             total += 1
-            print(f"✅ Post created: {title[:50]}...")
         else:
-            print(f"❌ Failed: {title[:50]} — {res.json()}")
+            print(f"❌ {title[:40]}: {res.status_code} {res.text}")
 
 print(f"\n🎉 Done! Created {total} posts across {len(category_ids)} categories.")

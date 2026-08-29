@@ -1,8 +1,9 @@
 import pytest
 from datetime import datetime, timedelta
+
 from services.recommendation_service import (
     rank_feeds, softmax, time_decay,
-    TIER1_SIZE, TIER1_MAX_PER_CAT, TIER2_SIZE
+    BUCKET_SIZE, SLOT_TOP, SLOT_WEIGHTED, TOP_MAX_PER_CAT,
 )
 
 # ── helpers ──────────────────────────────────────────────────
@@ -65,81 +66,119 @@ def test_time_decay_decreases_over_time():
     old_post = datetime.utcnow() - timedelta(hours=48)
     assert time_decay(new_post) > time_decay(old_post)
 
-# ── rank_feeds tests ──────────────────────────────────────────
+# ── rank_feeds: basics ────────────────────────────────────────
 
 def test_rank_feeds_no_preferences_returns_by_date():
-    """With no preferences, posts should be sorted newest first"""
+    """With no preferences there is nothing to personalise against, so the
+    ordering falls back to newest first."""
     feeds = [
         MockFeed(1, category_id=1, created_at=datetime.utcnow() - timedelta(hours=10)),
         MockFeed(2, category_id=1, created_at=datetime.utcnow() - timedelta(hours=1)),
         MockFeed(3, category_id=1, created_at=datetime.utcnow() - timedelta(hours=5)),
     ]
     result = rank_feeds(feeds, preferences=[])
-    assert result[0].id == 2  # most recent first
+    assert result[0].id == 2
 
 def test_rank_feeds_empty_feeds():
-    """Empty feed list should return empty list"""
-    result = rank_feeds([], preferences=[])
-    assert result == []
-
-def test_tier1_category_diversity():
-    """Tier 1 deterministic selection caps at TIER1_MAX_PER_CAT per category"""
-    # 10 posts from cat 1 (preferred), 10 from cat 2
-    feeds = (
-        [MockFeed(i, category_id=1, created_at=datetime.utcnow() - timedelta(seconds=i))
-         for i in range(10)] +
-        [MockFeed(i+10, category_id=2, created_at=datetime.utcnow() - timedelta(seconds=i))
-         for i in range(10)]
-    )
-    prefs = [
-        MockPref(category_id=1, score=0.9),
-        MockPref(category_id=2, score=0.1),
-    ]
-
-    result = rank_feeds(feeds, prefs)
-
-    # category 2 must appear in result — diversity enforced
-    categories_in_result = set(f.category_id for f in result)
-    assert 2 in categories_in_result
-
-    # all posts must appear — none dropped
-    assert len(result) == len(feeds)
-
-    # no duplicates
-    ids = [f.id for f in result]
-    assert len(ids) == len(set(ids))
+    """Empty candidate list should return empty list"""
+    assert rank_feeds([], preferences=[]) == []
 
 def test_rank_feeds_returns_all_posts():
-    """All posts should appear in result — none dropped"""
+    """Every candidate must appear — none silently dropped"""
     feeds = [MockFeed(i, category_id=i % 3) for i in range(20)]
     prefs = [MockPref(category_id=i, score=0.33) for i in range(3)]
-
-    result = rank_feeds(feeds, prefs)
-    assert len(result) == len(feeds)
+    result = rank_feeds(feeds, prefs, seed=1)
+    assert {f.id for f in feeds} <= {f.id for f in result}
 
 def test_rank_feeds_no_duplicate_posts():
-    """No post should appear twice in the result"""
+    """No post may appear twice, in one bucket or across buckets"""
     feeds = [MockFeed(i, category_id=i % 3) for i in range(30)]
     prefs = [MockPref(category_id=i, score=0.33) for i in range(3)]
-
-    result = rank_feeds(feeds, prefs)
+    result = rank_feeds(feeds, prefs, seed=1)
     ids = [f.id for f in result]
     assert len(ids) == len(set(ids))
 
-def test_preferred_category_ranks_higher():
-    """Posts from preferred category should appear in top results"""
-    feeds = [
-        MockFeed(1, category_id=1),  # preferred
-        MockFeed(2, category_id=2),  # not preferred
-        MockFeed(3, category_id=1),  # preferred
-        MockFeed(4, category_id=2),  # not preferred
-        MockFeed(5, category_id=1),  # preferred
-    ]
-    prefs = [
-        MockPref(category_id=1, score=0.9),  # strong preference
-        MockPref(category_id=2, score=0.1),  # weak preference
-    ]
+# ── rank_feeds: pagination stability ──────────────────────────
 
-    result = rank_feeds(feeds, prefs)
-    top3_categories = [f.category_id for f in result[:3]]
-    assert top3_categories.count(1) >= 2
+def test_same_seed_gives_same_order():
+    """The property pagination depends on. rank_feeds samples in its
+    weighted and random slots, so without a fixed seed page 2 would be
+    sliced out of an ordering page 1 never came from -- repeating some
+    posts and hiding others."""
+    feeds = [MockFeed(i, category_id=i % 4) for i in range(60)]
+    prefs = [MockPref(category_id=i, score=0.25) for i in range(4)]
+    a = [f.id for f in rank_feeds(feeds, prefs, seed=7)]
+    b = [f.id for f in rank_feeds(feeds, prefs, seed=7)]
+    assert a == b
+
+def test_different_seed_reshuffles():
+    """Rotating the seed hourly is what makes the feed feel new on a
+    return visit, so a different seed must actually change the order."""
+    feeds = [MockFeed(i, category_id=i % 4) for i in range(60)]
+    prefs = [MockPref(category_id=i, score=0.25) for i in range(4)]
+    a = [f.id for f in rank_feeds(feeds, prefs, seed=7)]
+    c = [f.id for f in rank_feeds(feeds, prefs, seed=8)]
+    assert a != c
+
+# ── rank_feeds: diversity ─────────────────────────────────────
+
+def test_top_slots_capped_per_category():
+    """Without the cap a user with one dominant interest sees only that
+    category at the top of every bucket, and the exploration slots never
+    get to counteract a monopoly that starts there."""
+    feeds = (
+        [MockFeed(i, category_id=1) for i in range(10)] +
+        [MockFeed(i + 10, category_id=2) for i in range(10)]
+    )
+    prefs = [MockPref(category_id=1, score=0.9), MockPref(category_id=2, score=0.1)]
+
+    result = rank_feeds(feeds, prefs, seed=1)
+
+    counts = {}
+    for f in result[:SLOT_TOP]:
+        counts[f.category_id] = counts.get(f.category_id, 0) + 1
+    assert max(counts.values()) <= TOP_MAX_PER_CAT
+
+def test_weak_category_still_reachable():
+    """A barely-preferred category must still surface somewhere."""
+    feeds = (
+        [MockFeed(i, category_id=1) for i in range(10)] +
+        [MockFeed(i + 10, category_id=2) for i in range(10)]
+    )
+    prefs = [MockPref(category_id=1, score=0.9), MockPref(category_id=2, score=0.1)]
+    result = rank_feeds(feeds, prefs, seed=1)
+    assert 2 in {f.category_id for f in result}
+
+def test_preferred_category_ranks_higher():
+    """Posts from the preferred category should dominate the top slots"""
+    feeds = [
+        MockFeed(1, category_id=1),
+        MockFeed(2, category_id=2),
+        MockFeed(3, category_id=1),
+        MockFeed(4, category_id=2),
+        MockFeed(5, category_id=1),
+    ]
+    prefs = [MockPref(category_id=1, score=0.9), MockPref(category_id=2, score=0.1)]
+    result = rank_feeds(feeds, prefs, seed=1)
+    assert [f.category_id for f in result[:3]].count(1) >= 2
+
+# ── rank_feeds: recycled slot ─────────────────────────────────
+
+def test_viewed_posts_recycled():
+    """Already-read posts fill the recycle slots, so a user who has run
+    low on fresh content still gets a full bucket."""
+    feeds  = [MockFeed(i, category_id=i % 3) for i in range(40)]
+    viewed = [MockFeed(100 + i, category_id=1) for i in range(6)]
+    prefs  = [MockPref(category_id=i, score=0.33) for i in range(3)]
+
+    result = rank_feeds(feeds, prefs, viewed=viewed, seed=1)
+    recycled_ids = {f.id for f in viewed}
+    assert recycled_ids & {f.id for f in result}
+
+def test_no_viewed_posts_still_works():
+    """The recycle pool runs dry once a user's history is exhausted; the
+    bucket must backfill rather than return short."""
+    feeds = [MockFeed(i, category_id=i % 3) for i in range(40)]
+    prefs = [MockPref(category_id=i, score=0.33) for i in range(3)]
+    result = rank_feeds(feeds, prefs, viewed=[], seed=1)
+    assert len(result) >= len(feeds)

@@ -28,8 +28,9 @@ services:
     env_file:
       - .env
     environment:
-      # .env has localhost (manual setup); inside the container the DB is at db:5432
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/contentplatform
+    volumes:
+      - ./backend:/home/user/app/backend
     depends_on:
       db:
         condition: service_healthy

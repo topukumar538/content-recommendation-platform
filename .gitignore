@@ -1,17 +1,39 @@
-# environment variables
-.env
+# ML artifacts — regenerable from train.py
+scorer.keras
+scaler.pkl
+affinities.json
 
-# python cache
-__pycache__/
-*.pyc
-
-# virtual environment
-venv/
-
-# OS files
-.DS_Store
-
+# test artifacts
 test.db
 
-# load test results
-backend/tests/load/results/
+# venv (check if already ignored)
+venv/
+
+
+
+# ML experiment — not committed yet
+simulate.py
+populate.py
+dataset.py
+train.py
+
+affinities.json
+
+.env.env
+simulate.py
+populate.py
+dataset.py
+train.py
+scorer.keras
+scaler.pkl
+affinities.json
+test.db
+.env
+simulate.py
+populate.py
+dataset.py
+train.py
+scorer.keras
+scaler.pkl
+affinities.json
+test.db

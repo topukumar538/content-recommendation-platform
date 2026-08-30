@@ -1,39 +1,34 @@
-# ML artifacts — regenerable from train.py
+# =========================
+# ML artifacts
+# =========================
 scorer.keras
 scaler.pkl
 affinities.json
 
-# test artifacts
+# =========================
+# Test artifacts
+# =========================
 test.db
 
-# venv (check if already ignored)
+# =========================
+# Virtual environment
+# =========================
 venv/
 
-
-
-# ML experiment — not committed yet
-simulate.py
-populate.py
-dataset.py
-train.py
-
-affinities.json
-
-.env.env
-simulate.py
-populate.py
-dataset.py
-train.py
-scorer.keras
-scaler.pkl
-affinities.json
-test.db
+# =========================
+# Environment variables / secrets
+# =========================
 .env
+.env.env
+
+# =========================
+# ML experiment scripts
+# =========================
 simulate.py
 populate.py
 dataset.py
 train.py
-scorer.keras
-scaler.pkl
-affinities.json
-test.db
+
+# Python cache
+__pycache__/
+*.py[cod]

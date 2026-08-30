@@ -10,3 +10,7 @@ affinities.json
 
 # test artifacts
 test.db
+
+# Python cache
+__pycache__/
+*.py[cod]

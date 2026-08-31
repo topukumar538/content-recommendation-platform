@@ -1,15 +1,14 @@
-# ML experiment — not on the request path, never imported by the app
-backend/ml/
-backend/simulate.py
-backend/populate.py
-backend/dataset.py
-backend/train.py
-scorer.keras
-scaler.pkl
-affinities.json
+# secrets — Compose injects config as environment variables at runtime,
+# so the file itself must never reach the build context
+.env
+.env.env
 
 # test artifacts
 test.db
+backend/tests/load/results/
+
+# local virtualenv
+venv/
 
 # Python cache
 __pycache__/

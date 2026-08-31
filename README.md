@@ -35,11 +35,10 @@ Built with focus on:
 - **Time-decayed preferences** — interactions age out with a 30-day time constant, so stale interests fade
 - **Batched background scoring** — keyset paging + one grouped aggregate + one bulk upsert per batch
 - **Clean architecture** — routes → services → core, fully separated concerns
-- **47 unit + integration tests** — ranking engine, auth flows, admin operations, user flows
+- **58 unit + integration tests** — ranking engine, scheduler normalisation, auth flows, admin operations, user flows
 - **CI/CD pipeline** — GitHub Actions runs the full suite on every push and PR; a passing push to `main` deploys automatically to the live Space
 - **Performance optimizations** — connection pooling, DB indexing, N+1 prevention, pagination
 - **Load tested** — staged Locust tests from 10 to 500 concurrent users, breaking point identified and documented
-- **Neural scoring experiment** — a Keras MLP trained on simulated behaviour, evaluated against baselines and **not** shipped. See [Neural Scoring Experiment](#neural-scoring-experiment)
 
 ---
 
@@ -53,7 +52,6 @@ Built with focus on:
 | Validation | Pydantic v2 |
 | Scheduler | APScheduler |
 | Testing | Pytest + Locust |
-| ML (experiment only) | TensorFlow/Keras, scikit-learn |
 | CI/CD | GitHub Actions → Hugging Face Spaces |
 | Frontend | Vanilla JS + Tailwind CSS |
 
@@ -66,7 +64,6 @@ This project emphasizes:
 - **Backend architecture patterns** — service isolation, dependency injection, background tasks
 - **Performance and scaling tradeoffs** — why batch scoring beats per-request scoring, why pagination happens after ranking
 - **Security best practices** — OTP attempt limiting, JWT storage, CORS, race condition prevention
-- **Honest evaluation** — a model was built, measured against baselines, and rejected on the evidence
 
 > This is not a CRUD app. Every architectural decision has a documented reason — including the ones that are still open, listed under [Known Limitations](#known-limitations).
 
@@ -85,7 +82,6 @@ This project emphasizes:
 | Password Hashing | bcrypt + passlib |
 | Scheduler | APScheduler |
 | Testing | Pytest (unit + integration) + Locust (load testing) |
-| ML (experiment only) | TensorFlow/Keras, scikit-learn, NumPy |
 | CI/CD | GitHub Actions → Hugging Face Spaces |
 | Frontend | HTML + Vanilla JS + Tailwind CSS |
 | Server | Uvicorn |
@@ -134,15 +130,11 @@ content-platform/
 │   │   ├── recommendation_service.py   # ranking algorithm with complexity comments
 │   │   ├── feedback_service.py         # feedback CRUD
 │   │   └── admin_service.py            # user management, stats
-│   ├── ml/                             # offline experiment — not on the request path
-│   │   ├── simulate.py                 # synthetic browsing behaviour
-│   │   ├── populate.py                 # writes synthetic users/impressions to Postgres
-│   │   ├── dataset.py                  # point-in-time feature extraction + temporal split
-│   │   └── train.py                    # MLP vs logistic vs heuristic, AUC comparison
 │   └── tests/
 │       ├── unit/
 │       │   ├── test_recommendation.py  # softmax, time decay, slot logic, seed stability
-│       │   └── test_auth.py            # login, signup, OTP, password validation
+│       │   ├── test_auth.py            # login, signup, OTP, password validation
+│       │   └── test_scheduler.py       # preference normalisation, dormant-user guard
 │       ├── integration/
 │       │   ├── test_feed.py            # signup → login → feed → auth cycle, pagination shape
 │       │   ├── test_admin.py           # admin block → user denied, unblock → access restored
@@ -150,8 +142,7 @@ content-platform/
 │       └── load/
 │           ├── locustfile.py           # realistic user flow simulation
 │           ├── run_tests.sh            # staged test runner, auto stop on failure
-│           ├── requirements.txt        # locust dependencies
-│           └── results/                # HTML + CSV reports per stage (gitignored)
+│           └── results/                # HTML + CSV reports per stage
 └── frontend/
     ├── index.html                      # landing page with smart redirect
     ├── signup.html
@@ -251,7 +242,9 @@ Each bucket of 20 is filled in order:
  2 slots  → already-viewed posts               recycled variety
 ```
 
-A single `seen` set spans every bucket, so no post appears twice anywhere in the ordering. If a slot type runs dry — the recycle pool empties, or the category cap blocks a pick — the bucket backfills by score rather than returning short. After the last bucket, anything the cap kept skipping is appended so no candidate is unreachable.
+A single `seen` set spans every bucket, so no post appears twice anywhere in the ordering. If a slot type runs dry — the recycle pool empties, or the category cap blocks a pick — the bucket backfills by score rather than returning short.
+
+The loop runs until every candidate has been placed, counting candidates consumed rather than buckets emitted. A bucket of 20 spends only 18 slots on candidates, since the 2 recycled posts come from the viewed pool, so a fixed bucket count would leave roughly a tenth of the pool outside the slot structure. A final sweep by score remains as a safety net; it should find nothing.
 
 **Why the category cap:** without it, a user with one dominant interest gets five posts from that category at the top of *every* page, and the exploration slots below never counteract a monopoly that starts at the top.
 
@@ -285,7 +278,7 @@ all posts
 
 Viewed posts are excluded permanently. `NOT EXISTS` rather than `NOT IN`: it stops at the first matching row per post and uses the `user_id` index, instead of materialising the user's entire viewed-id list. Checking `viewed` alone is enough — liking or saving implies having viewed.
 
-A separate query loads up to `RECYCLE_POOL_LIMIT` (100) previously-viewed posts for the recycle slots.
+A separate query loads up to `RECYCLE_POOL_LIMIT` (100) previously-viewed posts for the recycle slots. It applies the same search and category filters as the candidate query — without them a search for "python" would get recycled posts about anything, because that query is not constrained by what the user asked for.
 
 **New users** have no `category_preferences` rows, so `rank_feeds` returns newest-first with no slot structure. There is nothing to personalize against until the scheduler has run at least once after their first interactions.
 
@@ -341,55 +334,6 @@ Each batch commits independently and failures are logged with a traceback, so on
 - Post management — create and delete
 - User management — view all users, block/unblock, delete
 - Feedback management — view, resolve/unresolve, delete
-
----
-
-## Neural Scoring Experiment
-
-An offline experiment testing whether a learned model beats the hand-tuned scoring formula. **It does not run in production** — the code lives in `backend/ml/` and is not imported by any route or service.
-
-### What was built
-
-| file | role |
-|---|---|
-| `simulate.py` | generates synthetic browsing behaviour from an explicit rule |
-| `populate.py` | writes synthetic users, impressions and interactions to Postgres |
-| `dataset.py` | builds labelled rows with point-in-time correct features, splits by time |
-| `train.py` | trains a Keras MLP, compares it against logistic regression and the heuristic |
-
-**Impression logging.** `user_interactions` only records actions, so a post that was shown and ignored looks identical to one that was never shown. An `impressions` table records every (user, post) pair displayed, which is what makes an honest negative label possible: *shown and not viewed* rather than *absent from the interactions table*.
-
-**Point-in-time correctness.** Every aggregate is computed with `created_at < shown_at`. Using present-day totals for a past row leaks future information into the features — the model then scores well offline while having nothing real to say at serving time, when the future genuinely does not exist yet.
-
-**Temporal split.** Train on the earlier 75%, test on the most recent 25%. A random split would train on later behaviour and test on earlier behaviour, inflating the score in a way that does not reproduce in production.
-
-### Result
-
-AUC on the held-out window (~29k impressions, ~21% positive):
-
-| model | AUC |
-|---|---|
-| heuristic formula | 0.7830 |
-| logistic regression | 0.7843 |
-| Keras MLP (11 → 16 → 8 → 1) | 0.7856 |
-
-All three are within 0.003 — a tie. **The model was not shipped**, because there is no measured gain to justify a TensorFlow dependency, a model file, feature extraction on the request path, and a retraining job.
-
-### What this result does and does not show
-
-It does **not** establish that the production formula is good for real users. The evaluation ran entirely on simulated data, and every parameter of that simulation — the base view probability, the per-category decay half-lives, the like and save probabilities — was chosen by hand rather than measured. The models converge because the generating process is simple and fully exposed by the feature set; a richer, messier process is exactly where extra model capacity would be expected to pay off.
-
-What it does show is a correctly built evaluation pipeline: impression-based labelling, point-in-time features, a temporal split, class-weighted training, and a comparison against both the incumbent heuristic and a linear baseline. Pointed at real traffic, it would give a real answer. The middle rung matters — without a linear baseline, a good MLP number would not distinguish "the network earned its complexity" from "any fitted model would have done as well."
-
-### Running it
-
-```bash
-cd backend
-python ml/populate.py     # requires seeded categories and posts
-python ml/train.py        # prints the three AUCs, saves scorer.keras + scaler.pkl
-```
-
-`populate.py` inserts synthetic users and impressions. Do not run it against a database with real users.
 
 ---
 
@@ -495,7 +439,7 @@ Overall success     → 74%
 
 ```bash
 cd backend/tests/load
-pip install -r requirements.txt
+pip install locust
 
 export LOAD_TEST_DB_URL="postgresql://postgres:yourpassword@localhost:5432/contentplatform"
 
@@ -517,7 +461,7 @@ Stages run automatically: 10 → 100 → 500 → 1000 → 2000 → 3000 → 5000
 - **DB-level unique constraint** on `(user_id, feed_id, action)` — prevents race condition on duplicate interactions
 - **CORS restricted** — `ALLOWED_ORIGINS` configured via environment variable, no wildcard in production
 - **No default credentials** — `DATABASE_URL` and `SECRET_KEY` have no fallback values. A missing `.env` stops the app at startup instead of booting against an empty database with a publicly known signing key.
-- **Secrets stay out of the image** — `.dockerignore` excludes `.env` from the build context; Compose injects configuration as environment variables at runtime
+- **Secrets stay out of the image** — the Dockerfile copies only `backend/` and `frontend/`, so the root `.env` never reaches the image; Compose injects configuration as environment variables at runtime
 - **Explicit transaction control** — `autocommit=False`, changes only persist on `db.commit()`
 
 ---
@@ -557,15 +501,19 @@ Documented rather than hidden. These are the open items a reviewer would find.
 
 **No migrations.** Schema changes are applied by hand via the SQL in the manual setup path. Alembic is the right tool once the schema starts moving.
 
-**`record_interaction` relies on `IntegrityError` for repeat views.** Every view after the first raises and rolls back. It is correct but uses exceptions as control flow on a hot path; `INSERT ... ON CONFLICT DO NOTHING` is cleaner.
+**Saved posts are unordered and unpaginated.** `GET /user/saved` fetches by `id IN (...)` with no `ORDER BY`, so the list comes back in whatever order PostgreSQL chooses rather than by save time, and the whole collection is returned at once.
 
-**The `impressions` table is written only by the ML simulator.** It is not populated by the running application, so it cannot currently support retraining on real behaviour. Doing that would mean writing a row per post served, with the storage and write-path cost that implies.
+**Login and password reset reveal whether an email is registered.** `/auth/login` distinguishes "Email not found" from "Wrong password", and `/auth/forgot-password` returns "Email not found". A uniform message on both closes it.
+
+**`/auth/signup` is a second unthrottled OTP trigger.** For an existing unverified account it reissues a code with no password check, so the rate-limiting gap above is reachable from signup as well as from `/auth/resend-otp`.
+
+**`record_interaction` relies on `IntegrityError` for repeat views.** Every view after the first raises and rolls back. It is correct but uses exceptions as control flow on a hot path; `INSERT ... ON CONFLICT DO NOTHING` is cleaner.
 
 ---
 
 ## Tests
 
-47 tests across unit and integration:
+58 tests across unit and integration:
 
 ```bash
 cd backend
@@ -575,6 +523,7 @@ pytest tests/ -v
 **Unit tests — `tests/unit/`**
 - `test_recommendation.py` — softmax sums to 1.0, time decay never zero, category cap, no duplicates across buckets, every candidate reachable, same seed gives same order, different seed reshuffles, recycled slots fill, empty recycle pool backfills
 - `test_auth.py` — login failure cases, signup validation, password mismatch, blocked user
+- `test_scheduler.py` — preference shares sum to 1, per-user independence, the dormant-user guard, and agreement between the upsert values and the pairs the delete spares
 
 **Integration tests — `tests/integration/`**
 - `test_feed.py` — signup → login → feed → auth cycle, pagination shape, duplicate signup
@@ -592,8 +541,6 @@ The two tests worth calling out are `test_same_seed_gives_same_order` and `test_
 Integration tests run against a file-backed SQLite database created and dropped per test — no PostgreSQL required. `conftest.py` sets `TESTING`, `DEMO_MODE`, `DATABASE_URL` and `SECRET_KEY` in `os.environ` **before** importing the app, because Pydantic reads settings at import time. The suite therefore needs no `.env` and no secrets, attempts no SMTP connection, and runs fully offline. `TESTING=true` also suppresses APScheduler startup, so no background threads spawn during the run.
 
 Run pytest from `backend/`. The app uses flat imports (`from database import Base`), so `backend/` must be on `sys.path`; running from the repository root fails at collection rather than as a test failure.
-
-The `ml/` directory is not covered by the suite. It is an offline experiment with no production path, and training is too slow for a test run.
 
 ---
 
@@ -675,7 +622,7 @@ categories
 
 feeds
   id, title, content, category_id (FK), author_id (FK), created_at
-  indexes: ix_feeds_created_at_desc
+  indexes: ix_feeds_created_at
 
 user_interactions
   id, user_id (FK), feed_id (FK), action, created_at
@@ -684,10 +631,6 @@ user_interactions
 category_preferences
   id, user_id (FK), category_id (FK), score, updated_at
   unique: (user_id, category_id)        ← required by the scheduler's ON CONFLICT upsert
-
-impressions                              ← written by the ML simulator only
-  id, user_id (FK), feed_id (FK), shown_at
-  indexes: (user_id), (feed_id, shown_at)
 
 feedbacks
   id, user_id (FK), message, rating, is_resolved, created_at
@@ -892,7 +835,7 @@ GET  /config                       public runtime flags — { demo_mode, demo_ot
    sudo -u postgres psql -d contentplatform
    ```
    ```sql
-   CREATE INDEX ix_feeds_created_at_desc ON feeds (created_at DESC);
+   CREATE INDEX ix_feeds_created_at ON feeds (created_at);
    ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;
    ALTER TABLE user_interactions ADD CONSTRAINT uq_user_feed_action UNIQUE (user_id, feed_id, action);
    ALTER TABLE category_preferences ADD CONSTRAINT uq_user_category UNIQUE (user_id, category_id);
@@ -996,9 +939,6 @@ App-level deduplication alone has a race condition — two simultaneous requests
 
 **Pagination after ranking**
 Pagination happens after ranking, not at the query level. The algorithm needs the full pool to make meaningful decisions. Slicing before ranking would return reasonable posts for that page but poor overall personalization.
-
-**The neural scorer was measured, then rejected**
-Building a model and shipping it because you built it is the common failure mode. The MLP was compared against both the incumbent heuristic and a linear baseline on a temporal split, tied with both, and was therefore not deployed. A negative result honestly reported is more useful than a positive one that does not survive scrutiny.
 
 ---
 

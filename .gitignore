@@ -1,14 +1,8 @@
 # =========================
-# ML artifacts
-# =========================
-scorer.keras
-scaler.pkl
-affinities.json
-
-# =========================
 # Test artifacts
 # =========================
 test.db
+backend/tests/load/results/
 
 # =========================
 # Virtual environment
@@ -20,14 +14,6 @@ venv/
 # =========================
 .env
 .env.env
-
-# =========================
-# ML experiment scripts
-# =========================
-simulate.py
-populate.py
-dataset.py
-train.py
 
 # Python cache
 __pycache__/

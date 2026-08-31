@@ -45,23 +45,18 @@ def time_decay(created_at, now=None):
 # ============================================================
 # Recommendation Engine
 # ============================================================
-# The whole ordering is built in ONE pass, in buckets of BUCKET_SIZE.
+# Sorting is O(F log F). The bucket loop then rescans the sorted lists to
+# skip posts already taken -- O(F) per bucket across F/BUCKET_SIZE buckets
+# -- so the pass as a whole is O(F^2 / BUCKET_SIZE) time, O(F) space.
 #
-# The previous version re-ran on every request and re-rolled its random
-# tiers each time, so page 2 was sliced out of a different ordering than
-# page 1 had been: posts appeared twice and others were never reachable.
-# Building every bucket up front against a single seen set means page N is
-# genuinely the Nth slice of one stable list -- but only if the caller
-# passes a stable `seed`. Without one the sampling re-rolls per request and
-# the bug returns.
-#
-# Input:
-#   candidates   -> F unseen posts (capped by FEED_LIMIT)
-#   preferences  -> C category scores
-#   viewed       -> posts already read, for the recycle slot
-#
-# O(F log F) time, O(F) space
+# At FEED_LIMIT = 500 that is ~12.5k comparisons per request, well under
+# the cost of the four DB round trips around it. Getting back to
+# O(F log F) means a linked list over unseen candidates, a monotone cursor
+# for the date-ordered and backfill slots, a swap-remove array for the
+# random slot, and bounding the softmax pool -- worth doing only if
+# FEED_LIMIT grows by an order of magnitude.
 # ============================================================
+
 
 def rank_feeds(candidates, preferences, viewed=None, seed=None):
     if not candidates:
@@ -92,16 +87,30 @@ def rank_feeds(candidates, preferences, viewed=None, seed=None):
     result   = []
     seen_ids = set()
 
+    # A bucket of 20 spends only 18 slots on candidates -- the 2 recycled
+    # come from `viewed`, which is disjoint from `candidates`. Counting
+    # buckets as ceil(F / BUCKET_SIZE) therefore ran out of buckets with
+    # ~10% of the pool untouched, and those posts fell through to the
+    # leftover loop below in plain score order: no exploration, no
+    # randomness, no category cap. Tracking candidates consumed instead of
+    # buckets emitted keeps every post inside the slot structure.
+    candidate_ids = {f.id for f in candidates}
+    remaining     = len(candidates)
+
     def take(feed):
+        nonlocal remaining
         result.append(feed)
         seen_ids.add(feed.id)
+        if feed.id in candidate_ids:
+            remaining -= 1
 
     def available(pool):
         return [f for f in pool if f.id not in seen_ids]
 
-    n_buckets = math.ceil(len(candidates) / BUCKET_SIZE)
-
-    for _ in range(n_buckets):
+    # Terminates: the top slot takes at least one candidate on every pass
+    # while any remain, because cat_count resets per bucket, so the
+    # highest-scoring available post can never be cap-blocked first.
+    while remaining > 0:
         # --- top: best scoring, capped per category ----------------------
         # Without the cap a user with one dominant interest sees only that
         # category here, and the exploration slots below never get to
@@ -172,8 +181,9 @@ def rank_feeds(candidates, preferences, viewed=None, seed=None):
                 take(feed)
                 want -= 1
 
-    # Anything left over -- e.g. skipped by the category cap in every
-    # bucket -- is appended by score so no candidate is unreachable.
+    # Safety net. The loop above now consumes every candidate, so this
+    # should find nothing -- it stays because a post silently dropped from
+    # the feed raises no error, and the cost of the check is one pass.
     for feed in by_score:
         if feed.id not in seen_ids:
             take(feed)

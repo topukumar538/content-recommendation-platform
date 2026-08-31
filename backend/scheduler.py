@@ -80,6 +80,50 @@ def recalculate_all_scores():
         db.close()
 
 
+def normalize_batch(user_ids, rows):
+    """
+    Turn raw (user_id, category_id, decayed_score) rows into the upsert
+    VALUES list and the set of (user_id, category_id) pairs that survive
+    this run.
+
+    Split out from update_scores_for_users because it is the part where the
+    correctness lives -- normalisation, the dormant-user guard, and which
+    pairs escape the delete -- and it needs no session, so it can be tested
+    directly. The statements around it cannot: tuple_(...).notin_() is
+    PostgreSQL-only and the test database is SQLite.
+
+    Note what this does NOT cover: the action weights and the 30-day decay
+    are applied in SQL by _decayed_weight(), so `rows` arrives already
+    aggregated. Those remain untested.
+    """
+    # user_id -> {category_id: decayed score}
+    per_user = {}
+    for user_id, category_id, score in rows:
+        per_user.setdefault(user_id, {})[category_id] = float(score or 0.0)
+
+    values = []
+    keep = set()      # (user_id, category_id) pairs that survive this run
+    for user_id in user_ids:
+        scores = per_user.get(user_id, {})
+        total = sum(scores.values())
+        # Guard against a vanishing total: every interaction may have
+        # decayed to near zero for a long-dormant user, and dividing by
+        # that is meaningless. Such a user contributes nothing to `keep`,
+        # so their stale preferences are deleted rather than kept at a
+        # score that no longer means anything.
+        if total <= 1e-9:
+            continue
+        for category_id, score in scores.items():
+            values.append({
+                "user_id": user_id,
+                "category_id": category_id,
+                "score": round(score / total, 4),
+            })
+            keep.add((user_id, category_id))
+
+    return values, keep
+
+
 def update_scores_for_users(user_ids, db):
     """
     Score a whole batch in three statements.
@@ -101,28 +145,7 @@ def update_scores_for_users(user_ids, db):
         .all()
     )
 
-    # user_id -> {category_id: decayed score}
-    per_user = {}
-    for user_id, category_id, score in rows:
-        per_user.setdefault(user_id, {})[category_id] = float(score or 0.0)
-
-    values = []
-    keep = set()      # (user_id, category_id) pairs that survive this run
-    for user_id in user_ids:
-        scores = per_user.get(user_id, {})
-        total = sum(scores.values())
-        # Guard against a vanishing total: every interaction may have
-        # decayed to near zero for a long-dormant user, and dividing by
-        # that is meaningless.
-        if total <= 1e-9:
-            continue
-        for category_id, score in scores.items():
-            values.append({
-                "user_id": user_id,
-                "category_id": category_id,
-                "score": round(score / total, 4),
-            })
-            keep.add((user_id, category_id))
+    values, keep = normalize_batch(user_ids, rows)
 
     # Drop preferences with no interaction behind them any more, otherwise a
     # score survives forever after the last like is removed. Scoped to this

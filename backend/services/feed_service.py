@@ -45,13 +45,8 @@ def delete_category(category_id: int, db: Session):
     db.commit()
     return {"message": "Category deleted"}
 
-def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
-                          page: int = 1, limit: int = 20):
-    query = db.query(Feed).options(
-        joinedload(Feed.category),
-        joinedload(Feed.author)
-    )
 
+def _apply_filters(query, search, category_id):
     if search:
         query = query.filter(
             Feed.title.ilike(f"%{search}%") |
@@ -59,6 +54,17 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
         )
     if category_id:
         query = query.filter(Feed.category_id == category_id)
+    return query
+
+
+def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
+                          page: int = 1, limit: int = 20):
+    query = db.query(Feed).options(
+        joinedload(Feed.category),
+        joinedload(Feed.author)
+    )
+
+    query = _apply_filters(query, search, category_id)
 
     # Exclude posts this user has already read. Without this the candidate
     # pool never shrinks, so a post stays eligible forever and keeps
@@ -99,7 +105,11 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
 
     # Posts already read, for the recycle slot. Capped because only a couple
     # per bucket are ever used and the full history is unbounded.
-    viewed_posts = (
+    #
+    # The same filters as the candidate pool. Without them a search for
+    # "python" gets recycled posts about anything, because this query is
+    # not constrained by what the user asked for.
+    viewed_q = (
         db.query(Feed)
           .options(joinedload(Feed.category), joinedload(Feed.author))
           .join(UserInteraction, UserInteraction.feed_id == Feed.id)
@@ -107,6 +117,9 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
               UserInteraction.user_id == user_id,
               UserInteraction.action == "viewed",
           )
+    )
+    viewed_posts = (
+        _apply_filters(viewed_q, search, category_id)
           .order_by(Feed.created_at.desc())
           .limit(RECYCLE_POOL_LIMIT)
           .all()
@@ -135,7 +148,8 @@ def get_personalized_feed(user_id: int, db: Session, search: str, category_id,
         "pages": pages,
         "exhausted": len(items) == 0 and not search and not category_id,
     }
-            
+
+
 def get_feed_by_id(feed_id: int, db: Session):
     feed = db.query(Feed).options(
         joinedload(Feed.category),
@@ -173,6 +187,7 @@ def update_feed(feed_id: int, data: FeedUpdate, db: Session):
     db.refresh(feed)
     return feed
 
+
 def delete_feed(feed_id: int, db: Session):
     db.query(UserInteraction).filter(UserInteraction.feed_id == feed_id).delete()
     feed = db.query(Feed).filter(Feed.id == feed_id).first()
@@ -183,13 +198,13 @@ def delete_feed(feed_id: int, db: Session):
     return {"message": "Post deleted"}
 
 
-
 def record_interaction(user_id: int, feed_id: int, action: str, db: Session):
     try:
         db.add(UserInteraction(user_id=user_id, feed_id=feed_id, action=action))
         db.commit()
     except IntegrityError:
         db.rollback()  # duplicate — silently ignore
+
 
 def toggle_interaction(user_id: int, feed_id: int, action: str, db: Session):
     existing = db.query(UserInteraction).filter(

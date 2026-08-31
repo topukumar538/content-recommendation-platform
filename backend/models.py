@@ -49,7 +49,7 @@ class Feed(Base):
     author      : Mapped["User"]    = relationship("User")
 
     __table_args__ = (
-        Index("ix_feeds_created_at_desc", "created_at"),
+        Index("ix_feeds_created_at", "created_at"),
     )
 
 

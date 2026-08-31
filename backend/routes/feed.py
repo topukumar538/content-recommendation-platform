@@ -66,7 +66,8 @@ def get_feed(
         ],
         "total": feeds["total"],
         "page": feeds["page"],
-        "pages": feeds["pages"]
+        "pages": feeds["pages"],
+        "exhausted": feeds["exhausted"]
     }
 
 @router.get("/feed/{feed_id}/interactions")
